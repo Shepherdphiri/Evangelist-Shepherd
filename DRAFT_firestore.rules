@@ -1,0 +1,392 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Global Safety Net: Default Deny
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // --- Global Primitives ---
+    function isValidId(id) {
+      return id is string && id.size() >= 1 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isVerifiedEmail() {
+      return isSignedIn() && request.auth.token.email_verified == true;
+    }
+
+    function isBootstrappedAdmin() {
+      return isVerifiedEmail() && request.auth.token.email == 'sheperdphiri88@gmail.com';
+    }
+
+    function sermonViews(data) {
+      return ('viewCount' in data && data.viewCount is int) ? data.viewCount : 0;
+    }
+
+    function articleViews(data) {
+      return ('viewCount' in data && data.viewCount is int) ? data.viewCount : 0;
+    }
+
+    function isStarterMetricId(id) {
+      return id is string && id.matches('^starter\\-(sermon|article)\\-[0-9]{1,4}$');
+    }
+
+    function isValidEngagementMetric(data) {
+      return data.keys().hasAll(['viewCount', 'amenCount', 'prayCount', 'loveCount', 'updatedAt'])
+        && data.keys().hasOnly(['viewCount', 'amenCount', 'prayCount', 'loveCount', 'updatedAt'])
+        && data.viewCount is int && data.viewCount >= 0 && data.viewCount <= 10000000
+        && data.amenCount is int && data.amenCount >= 0 && data.amenCount <= 10000000
+        && data.prayCount is int && data.prayCount >= 0 && data.prayCount <= 10000000
+        && data.loveCount is int && data.loveCount >= 0 && data.loveCount <= 10000000
+        && data.updatedAt is timestamp;
+    }
+
+    // --- Validation Blueprints ---
+    function isValidSermon(data) {
+      return data.keys().hasAll([
+        'title', 'category', 'scriptureRef', 'scriptureQuote', 'summary',
+        'content', 'readTimeMinutes', 'coverImage', 'videoUrl', 'isFeatured',
+        'isPublished', 'amenCount', 'prayCount', 'loveCount', 'authorId',
+        'authorName', 'createdAt', 'updatedAt'
+      ])
+      && data.keys().hasOnly([
+        'title', 'category', 'scriptureRef', 'scriptureQuote', 'summary',
+        'content', 'readTimeMinutes', 'coverImage', 'videoUrl', 'isFeatured',
+        'isPublished', 'amenCount', 'prayCount', 'loveCount', 'viewCount', 'authorId',
+        'authorName', 'createdAt', 'updatedAt'
+      ])
+      && data.title is string && data.title.size() >= 3 && data.title.size() <= 140
+      && data.category is string && (data.category == 'Short Sermon' || data.category == 'Midweek Message' || data.category == 'Word of Encouragement')
+      && data.scriptureRef is string && data.scriptureRef.size() >= 2 && data.scriptureRef.size() <= 80
+      && data.scriptureQuote is string && data.scriptureQuote.size() <= 400
+      && data.summary is string && data.summary.size() >= 10 && data.summary.size() <= 360
+      && data.content is string && data.content.size() >= 20 && data.content.size() <= 8000
+      && (data.readTimeMinutes is int || data.readTimeMinutes is float) && data.readTimeMinutes >= 1 && data.readTimeMinutes <= 60
+      && data.coverImage is string && data.coverImage.size() <= 500
+      && data.videoUrl is string && data.videoUrl.size() <= 500
+      && data.isFeatured is bool
+      && data.isPublished is bool
+      && (data.amenCount is int) && data.amenCount >= 0
+      && (data.prayCount is int) && data.prayCount >= 0
+      && (data.loveCount is int) && data.loveCount >= 0
+      && (!('viewCount' in data) || (data.viewCount is int && data.viewCount >= 0))
+      && data.authorId is string && isValidId(data.authorId)
+      && data.authorName is string && data.authorName.size() >= 2 && data.authorName.size() <= 80
+      && data.createdAt is timestamp
+      && data.updatedAt is timestamp;
+    }
+
+    function isValidFaithArticle(data) {
+      return data.keys().hasAll([
+        'title', 'questionPrompt', 'topic', 'scriptureRef', 'excerpt',
+        'content', 'readTimeMinutes', 'isPublished', 'authorId', 'authorName',
+        'createdAt', 'updatedAt'
+      ])
+      && data.keys().hasOnly([
+        'title', 'questionPrompt', 'topic', 'scriptureRef', 'excerpt',
+        'content', 'coverImage', 'readTimeMinutes', 'viewCount', 'isPublished', 'authorId',
+        'authorName', 'createdAt', 'updatedAt'
+      ])
+      && data.title is string && data.title.size() >= 3 && data.title.size() <= 140
+      && data.questionPrompt is string && data.questionPrompt.size() >= 3 && data.questionPrompt.size() <= 200
+      && data.topic is string && data.topic.size() >= 2 && data.topic.size() <= 60
+      && data.scriptureRef is string && data.scriptureRef.size() >= 2 && data.scriptureRef.size() <= 80
+      && data.excerpt is string && data.excerpt.size() >= 10 && data.excerpt.size() <= 360
+      && data.content is string && data.content.size() >= 20 && data.content.size() <= 8000
+      && (!('coverImage' in data) || (data.coverImage is string && data.coverImage.size() <= 500))
+      && (data.readTimeMinutes is int || data.readTimeMinutes is float) && data.readTimeMinutes >= 1 && data.readTimeMinutes <= 60
+      && (!('viewCount' in data) || (data.viewCount is int && data.viewCount >= 0))
+      && data.isPublished is bool
+      && data.authorId is string && isValidId(data.authorId)
+      && data.authorName is string && data.authorName.size() >= 2 && data.authorName.size() <= 80
+      && data.createdAt is timestamp
+      && data.updatedAt is timestamp;
+    }
+
+    function isValidProgram(data) {
+      return data.keys().hasAll([
+        'title', 'schedule', 'format', 'description', 'locationOrLink',
+        'isActive', 'orderIndex', 'authorId', 'createdAt', 'updatedAt'
+      ])
+      && data.keys().hasOnly([
+        'title', 'schedule', 'format', 'description', 'locationOrLink',
+        'isActive', 'orderIndex', 'authorId', 'createdAt', 'updatedAt'
+      ])
+      && data.title is string && data.title.size() >= 3 && data.title.size() <= 120
+      && data.schedule is string && data.schedule.size() >= 2 && data.schedule.size() <= 120
+      && data.format is string && data.format.size() >= 2 && data.format.size() <= 80
+      && data.description is string && data.description.size() >= 10 && data.description.size() <= 500
+      && data.locationOrLink is string && data.locationOrLink.size() <= 300
+      && data.isActive is bool
+      && (data.orderIndex is int || data.orderIndex is float) && data.orderIndex >= 0 && data.orderIndex <= 1000
+      && data.authorId is string && isValidId(data.authorId)
+      && data.createdAt is timestamp
+      && data.updatedAt is timestamp;
+    }
+
+    function isValidMinistrySettings(data) {
+      return data.keys().hasAll([
+        'evangelistName', 'heroEyebrow', 'ministryTagline', 'heroPrimaryCtaLabel',
+        'heroSecondaryCtaLabel', 'aboutBio', 'portraitUrl', 'weeklyVerse',
+        'weeklyVerseRef', 'contactEmail', 'location', 'footerHeading', 'footerBio',
+        'footerCopyright', 'footerCredit', 'hideDemoSermons', 'hideDemoArticles',
+        'hideDemoPrograms', 'youtubeUrl', 'facebookUrl', 'instagramUrl', 'tiktokUrl',
+        'xUrl', 'whatsappUrl', 'podcastUrl', 'updatedBy', 'updatedAt'
+      ])
+      && data.keys().hasOnly([
+        'evangelistName', 'heroEyebrow', 'ministryTagline', 'heroPrimaryCtaLabel',
+        'heroSecondaryCtaLabel', 'aboutBio', 'portraitUrl', 'weeklyVerse',
+        'weeklyVerseRef', 'contactEmail', 'location', 'footerHeading', 'footerBio',
+        'footerCopyright', 'footerCredit', 'hideDemoSermons', 'hideDemoArticles',
+        'hideDemoPrograms', 'youtubeUrl', 'facebookUrl', 'instagramUrl', 'tiktokUrl',
+        'xUrl', 'whatsappUrl', 'podcastUrl', 'updatedBy', 'updatedAt'
+      ])
+      && data.evangelistName is string && data.evangelistName.size() >= 2 && data.evangelistName.size() <= 80
+      && data.heroEyebrow is string && data.heroEyebrow.size() >= 2 && data.heroEyebrow.size() <= 100
+      && data.ministryTagline is string && data.ministryTagline.size() >= 4 && data.ministryTagline.size() <= 160
+      && data.heroPrimaryCtaLabel is string && data.heroPrimaryCtaLabel.size() >= 2 && data.heroPrimaryCtaLabel.size() <= 40
+      && data.heroSecondaryCtaLabel is string && data.heroSecondaryCtaLabel.size() >= 2 && data.heroSecondaryCtaLabel.size() <= 40
+      && data.aboutBio is string && data.aboutBio.size() >= 10 && data.aboutBio.size() <= 2000
+      && data.portraitUrl is string && data.portraitUrl.size() <= 500
+      && data.weeklyVerse is string && data.weeklyVerse.size() >= 5 && data.weeklyVerse.size() <= 400
+      && data.weeklyVerseRef is string && data.weeklyVerseRef.size() >= 2 && data.weeklyVerseRef.size() <= 80
+      && data.contactEmail is string && data.contactEmail.size() <= 120
+      && data.location is string && data.location.size() <= 120
+      && data.footerHeading is string && data.footerHeading.size() >= 2 && data.footerHeading.size() <= 80
+      && data.footerBio is string && data.footerBio.size() <= 300
+      && data.footerCopyright is string && data.footerCopyright.size() <= 140
+      && data.footerCredit is string && data.footerCredit.size() <= 120
+      && data.hideDemoSermons is bool
+      && data.hideDemoArticles is bool
+      && data.hideDemoPrograms is bool
+      && data.youtubeUrl is string && data.youtubeUrl.size() <= 300
+      && data.facebookUrl is string && data.facebookUrl.size() <= 300
+      && data.instagramUrl is string && data.instagramUrl.size() <= 300
+      && data.tiktokUrl is string && data.tiktokUrl.size() <= 300
+      && data.xUrl is string && data.xUrl.size() <= 300
+      && data.whatsappUrl is string && data.whatsappUrl.size() <= 300
+      && data.podcastUrl is string && data.podcastUrl.size() <= 300
+      && data.updatedBy is string && isValidId(data.updatedBy)
+      && data.updatedAt is timestamp;
+    }
+
+    function isValidPrayerRequest(data) {
+      return data.keys().hasAll([
+        'senderName', 'senderEmail', 'senderPhone', 'requestType', 'subject',
+        'message', 'isPrivate', 'status', 'adminNote', 'createdAt', 'updatedAt'
+      ])
+      && data.keys().hasOnly([
+        'senderName', 'senderEmail', 'senderPhone', 'requestType', 'subject',
+        'message', 'isPrivate', 'status', 'adminNote', 'createdAt', 'updatedAt'
+      ])
+      && data.senderName is string && data.senderName.size() >= 2 && data.senderName.size() <= 80
+      && data.senderEmail is string && data.senderEmail.size() <= 120
+      && data.senderPhone is string && data.senderPhone.size() <= 40
+      && data.requestType is string && (
+        data.requestType == 'Prayer Request' ||
+        data.requestType == 'Inquiry' ||
+        data.requestType == 'Testimony' ||
+        data.requestType == 'General Message'
+      )
+      && data.subject is string && data.subject.size() >= 2 && data.subject.size() <= 140
+      && data.message is string && data.message.size() >= 5 && data.message.size() <= 3000
+      && data.isPrivate is bool
+      && data.status is string && (
+        data.status == 'unread' ||
+        data.status == 'prayed_over' ||
+        data.status == 'replied' ||
+        data.status == 'archived'
+      )
+      && data.adminNote is string && data.adminNote.size() <= 1000
+      && data.createdAt is timestamp
+      && data.updatedAt is timestamp;
+    }
+
+    // --- Collection: sermons (Short Sermons & Encouragement Posts with Reactions) ---
+    match /sermons/{sermonId} {
+      allow get: if isValidId(sermonId) && (existing().isPublished == true || isBootstrappedAdmin());
+      allow list: if resource.data.isPublished == true || isBootstrappedAdmin();
+      allow create: if isBootstrappedAdmin()
+        && isValidId(sermonId)
+        && isValidSermon(incoming())
+        && incoming().authorId == request.auth.uid
+        && incoming().createdAt == request.time
+        && incoming().updatedAt == request.time;
+      allow update: if isValidId(sermonId) && isValidSermon(incoming()) && (
+        (
+          isBootstrappedAdmin()
+          && incoming().authorId == existing().authorId
+          && incoming().createdAt == existing().createdAt
+          && incoming().updatedAt == request.time
+          && incoming().diff(existing()).affectedKeys().hasOnly([
+            'title', 'category', 'scriptureRef', 'scriptureQuote', 'summary',
+            'content', 'readTimeMinutes', 'coverImage', 'videoUrl', 'isFeatured',
+            'isPublished', 'authorName', 'amenCount', 'prayCount', 'loveCount', 'viewCount', 'updatedAt'
+          ])
+        ) || (
+          existing().isPublished == true
+          && incoming().diff(existing()).affectedKeys().hasOnly(['amenCount', 'prayCount', 'loveCount', 'viewCount'])
+          && incoming().amenCount >= existing().amenCount
+          && incoming().amenCount <= existing().amenCount + 1
+          && incoming().prayCount >= existing().prayCount
+          && incoming().prayCount <= existing().prayCount + 1
+          && incoming().loveCount >= existing().loveCount
+          && incoming().loveCount <= existing().loveCount + 1
+          && sermonViews(incoming()) >= sermonViews(existing())
+          && sermonViews(incoming()) <= sermonViews(existing()) + 1
+          && (
+            incoming().amenCount + incoming().prayCount + incoming().loveCount + sermonViews(incoming())
+            == existing().amenCount + existing().prayCount + existing().loveCount + sermonViews(existing()) + 1
+          )
+        )
+      );
+      allow delete: if isBootstrappedAdmin() && isValidId(sermonId);
+    }
+
+    // --- Collection: faith_articles (Blog & Answers About Faith) ---
+    match /faith_articles/{articleId} {
+      allow get: if isValidId(articleId) && (existing().isPublished == true || isBootstrappedAdmin());
+      allow list: if resource.data.isPublished == true || isBootstrappedAdmin();
+      allow create: if isBootstrappedAdmin()
+        && isValidId(articleId)
+        && isValidFaithArticle(incoming())
+        && incoming().authorId == request.auth.uid
+        && incoming().createdAt == request.time
+        && incoming().updatedAt == request.time;
+      allow update: if isValidId(articleId) && isValidFaithArticle(incoming()) && (
+        (
+          isBootstrappedAdmin()
+          && incoming().authorId == existing().authorId
+          && incoming().createdAt == existing().createdAt
+          && incoming().updatedAt == request.time
+          && incoming().diff(existing()).affectedKeys().hasOnly([
+            'title', 'questionPrompt', 'topic', 'scriptureRef', 'excerpt',
+            'content', 'coverImage', 'readTimeMinutes', 'viewCount', 'isPublished', 'authorName', 'updatedAt'
+          ])
+        ) || (
+          existing().isPublished == true
+          && incoming().diff(existing()).affectedKeys().hasOnly(['viewCount'])
+          && articleViews(incoming()) == articleViews(existing()) + 1
+        )
+      );
+      allow delete: if isBootstrappedAdmin() && isValidId(articleId);
+    }
+
+    // --- Collection: programs (Ministry Programs) ---
+    match /programs/{programId} {
+      allow get: if isValidId(programId) && (existing().isActive == true || isBootstrappedAdmin());
+      allow list: if resource.data.isActive == true || isBootstrappedAdmin();
+      allow create: if isBootstrappedAdmin()
+        && isValidId(programId)
+        && isValidProgram(incoming())
+        && incoming().authorId == request.auth.uid
+        && incoming().createdAt == request.time
+        && incoming().updatedAt == request.time;
+      allow update: if isBootstrappedAdmin()
+        && isValidId(programId)
+        && isValidProgram(incoming())
+        && incoming().authorId == existing().authorId
+        && incoming().createdAt == existing().createdAt
+        && incoming().updatedAt == request.time
+        && incoming().diff(existing()).affectedKeys().hasOnly([
+          'title', 'schedule', 'format', 'description', 'locationOrLink',
+          'isActive', 'orderIndex', 'updatedAt'
+        ]);
+      allow delete: if isBootstrappedAdmin() && isValidId(programId);
+    }
+
+    // --- Collection: ministry_settings ---
+    match /ministry_settings/{settingId} {
+      allow get: if isValidId(settingId) && settingId == 'main';
+      allow list: if false;
+      allow create: if isBootstrappedAdmin()
+        && isValidId(settingId)
+        && settingId == 'main'
+        && isValidMinistrySettings(incoming())
+        && incoming().updatedBy == request.auth.uid
+        && incoming().updatedAt == request.time;
+      allow update: if isBootstrappedAdmin()
+        && isValidId(settingId)
+        && settingId == 'main'
+        && isValidMinistrySettings(incoming())
+        && incoming().updatedBy == request.auth.uid
+        && incoming().updatedAt == request.time
+        && incoming().diff(existing()).affectedKeys().hasOnly([
+          'evangelistName', 'heroEyebrow', 'ministryTagline', 'heroPrimaryCtaLabel',
+          'heroSecondaryCtaLabel', 'aboutBio', 'portraitUrl', 'weeklyVerse',
+          'weeklyVerseRef', 'contactEmail', 'location', 'footerHeading', 'footerBio',
+          'footerCopyright', 'footerCredit', 'hideDemoSermons', 'hideDemoArticles',
+          'hideDemoPrograms', 'youtubeUrl', 'facebookUrl', 'instagramUrl', 'tiktokUrl',
+          'xUrl', 'whatsappUrl', 'podcastUrl', 'updatedBy', 'updatedAt'
+        ]);
+      allow delete: if false;
+    }
+
+    // --- Collection: prayer_requests (PII Isolated) ---
+    match /prayer_requests/{requestId} {
+      allow get: if isBootstrappedAdmin() && isValidId(requestId);
+      allow list: if isBootstrappedAdmin();
+      allow create: if isValidId(requestId)
+        && isValidPrayerRequest(incoming())
+        && incoming().status == 'unread'
+        && incoming().adminNote == ''
+        && incoming().createdAt == request.time
+        && incoming().updatedAt == request.time;
+      allow update: if isBootstrappedAdmin()
+        && isValidId(requestId)
+        && isValidPrayerRequest(incoming())
+        && incoming().senderName == existing().senderName
+        && incoming().senderEmail == existing().senderEmail
+        && incoming().senderPhone == existing().senderPhone
+        && incoming().requestType == existing().requestType
+        && incoming().subject == existing().subject
+        && incoming().message == existing().message
+        && incoming().isPrivate == existing().isPrivate
+        && incoming().createdAt == existing().createdAt
+        && incoming().updatedAt == request.time
+        && incoming().diff(existing()).affectedKeys().hasOnly(['status', 'adminNote', 'updatedAt']);
+      allow delete: if isBootstrappedAdmin() && isValidId(requestId);
+    }
+
+    // --- Collection: engagement_metrics (Shared Synced Views & Reactions for Starter Items) ---
+    match /engagement_metrics/{metricId} {
+      allow get: if isValidId(metricId) && isStarterMetricId(metricId);
+      allow list: if true;
+      allow create: if isValidId(metricId)
+        && isStarterMetricId(metricId)
+        && isValidEngagementMetric(incoming())
+        && incoming().updatedAt == request.time
+        && incoming().viewCount >= 0 && incoming().viewCount <= 1
+        && incoming().amenCount >= 0 && incoming().amenCount <= 1
+        && incoming().prayCount >= 0 && incoming().prayCount <= 1
+        && incoming().loveCount >= 0 && incoming().loveCount <= 1
+        && (incoming().viewCount + incoming().amenCount + incoming().prayCount + incoming().loveCount == 1);
+      allow update: if isValidId(metricId)
+        && isStarterMetricId(metricId)
+        && isValidEngagementMetric(incoming())
+        && incoming().updatedAt == request.time
+        && incoming().diff(existing()).affectedKeys().hasOnly(['viewCount', 'amenCount', 'prayCount', 'loveCount', 'updatedAt'])
+        && incoming().viewCount >= existing().viewCount && incoming().viewCount <= existing().viewCount + 1
+        && incoming().amenCount >= existing().amenCount && incoming().amenCount <= existing().amenCount + 1
+        && incoming().prayCount >= existing().prayCount && incoming().prayCount <= existing().prayCount + 1
+        && incoming().loveCount >= existing().loveCount && incoming().loveCount <= existing().loveCount + 1
+        && (
+          incoming().viewCount + incoming().amenCount + incoming().prayCount + incoming().loveCount
+          == existing().viewCount + existing().amenCount + existing().prayCount + existing().loveCount + 1
+        );
+      allow delete: if isBootstrappedAdmin() && isValidId(metricId);
+    }
+  }
+}

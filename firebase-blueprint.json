@@ -1,0 +1,192 @@
+{
+  "entities": {
+    "Sermon": {
+      "title": "Sermon",
+      "description": "A short sermon (with YouTube link) or word of encouragement post with visitor reactions.",
+      "type": "object",
+      "properties": {
+        "title": { "type": "string", "minLength": 3, "maxLength": 140 },
+        "category": { "type": "string", "enum": ["Short Sermon", "Midweek Message", "Word of Encouragement"] },
+        "scriptureRef": { "type": "string", "minLength": 2, "maxLength": 80 },
+        "scriptureQuote": { "type": "string", "maxLength": 400 },
+        "summary": { "type": "string", "minLength": 10, "maxLength": 360 },
+        "content": { "type": "string", "minLength": 20, "maxLength": 8000 },
+        "readTimeMinutes": { "type": "number" },
+        "coverImage": { "type": "string", "maxLength": 500 },
+        "videoUrl": { "type": "string", "maxLength": 500 },
+        "isFeatured": { "type": "boolean" },
+        "isPublished": { "type": "boolean" },
+        "amenCount": { "type": "number" },
+        "prayCount": { "type": "number" },
+        "loveCount": { "type": "number" },
+        "viewCount": { "type": "number" },
+        "authorId": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "authorName": { "type": "string", "minLength": 2, "maxLength": 80 },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": [
+        "title", "category", "scriptureRef", "scriptureQuote", "summary",
+        "content", "readTimeMinutes", "coverImage", "videoUrl", "isFeatured",
+        "isPublished", "amenCount", "prayCount", "loveCount", "authorId",
+        "authorName", "createdAt", "updatedAt"
+      ]
+    },
+    "FaithArticle": {
+      "title": "FaithArticle",
+      "description": "Blog post and biblical answer to questions about Christian faith.",
+      "type": "object",
+      "properties": {
+        "title": { "type": "string", "minLength": 3, "maxLength": 140 },
+        "questionPrompt": { "type": "string", "minLength": 3, "maxLength": 200 },
+        "topic": { "type": "string", "minLength": 2, "maxLength": 60 },
+        "scriptureRef": { "type": "string", "minLength": 2, "maxLength": 80 },
+        "excerpt": { "type": "string", "minLength": 10, "maxLength": 360 },
+        "content": { "type": "string", "minLength": 20, "maxLength": 8000 },
+        "coverImage": { "type": "string", "maxLength": 500 },
+        "readTimeMinutes": { "type": "number" },
+        "viewCount": { "type": "number" },
+        "isPublished": { "type": "boolean" },
+        "authorId": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "authorName": { "type": "string", "minLength": 2, "maxLength": 80 },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": [
+        "title", "questionPrompt", "topic", "scriptureRef", "excerpt",
+        "content", "readTimeMinutes", "isPublished", "authorId", "authorName",
+        "createdAt", "updatedAt"
+      ]
+    },
+    "MinistryProgram": {
+      "title": "MinistryProgram",
+      "description": "Scheduled outreach, prayer, fellowship, or discipleship program led by Evangelist Shepherd.",
+      "type": "object",
+      "properties": {
+        "title": { "type": "string", "minLength": 3, "maxLength": 120 },
+        "schedule": { "type": "string", "minLength": 2, "maxLength": 120 },
+        "format": { "type": "string", "minLength": 2, "maxLength": 80 },
+        "description": { "type": "string", "minLength": 10, "maxLength": 500 },
+        "locationOrLink": { "type": "string", "maxLength": 300 },
+        "isActive": { "type": "boolean" },
+        "orderIndex": { "type": "number" },
+        "authorId": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": [
+        "title", "schedule", "format", "description", "locationOrLink",
+        "isActive", "orderIndex", "authorId", "createdAt", "updatedAt"
+      ]
+    },
+    "MinistrySettings": {
+      "title": "MinistrySettings",
+      "description": "Public profile, customizable hero content, footer content, demo visibility flags, portrait, weekly scripture, and social media portal links for Evangelist Shepherd.",
+      "type": "object",
+      "properties": {
+        "evangelistName": { "type": "string", "minLength": 2, "maxLength": 80 },
+        "heroEyebrow": { "type": "string", "minLength": 2, "maxLength": 100 },
+        "ministryTagline": { "type": "string", "minLength": 4, "maxLength": 160 },
+        "heroPrimaryCtaLabel": { "type": "string", "minLength": 2, "maxLength": 40 },
+        "heroSecondaryCtaLabel": { "type": "string", "minLength": 2, "maxLength": 40 },
+        "aboutBio": { "type": "string", "minLength": 10, "maxLength": 2000 },
+        "portraitUrl": { "type": "string", "maxLength": 500 },
+        "weeklyVerse": { "type": "string", "minLength": 5, "maxLength": 400 },
+        "weeklyVerseRef": { "type": "string", "minLength": 2, "maxLength": 80 },
+        "contactEmail": { "type": "string", "maxLength": 120 },
+        "location": { "type": "string", "maxLength": 120 },
+        "footerHeading": { "type": "string", "minLength": 2, "maxLength": 80 },
+        "footerBio": { "type": "string", "maxLength": 300 },
+        "footerCopyright": { "type": "string", "maxLength": 140 },
+        "footerCredit": { "type": "string", "maxLength": 120 },
+        "hideDemoSermons": { "type": "boolean" },
+        "hideDemoArticles": { "type": "boolean" },
+        "hideDemoPrograms": { "type": "boolean" },
+        "youtubeUrl": { "type": "string", "maxLength": 300 },
+        "facebookUrl": { "type": "string", "maxLength": 300 },
+        "instagramUrl": { "type": "string", "maxLength": 300 },
+        "tiktokUrl": { "type": "string", "maxLength": 300 },
+        "xUrl": { "type": "string", "maxLength": 300 },
+        "whatsappUrl": { "type": "string", "maxLength": 300 },
+        "podcastUrl": { "type": "string", "maxLength": 300 },
+        "updatedBy": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": [
+        "evangelistName", "heroEyebrow", "ministryTagline", "heroPrimaryCtaLabel",
+        "heroSecondaryCtaLabel", "aboutBio", "portraitUrl", "weeklyVerse",
+        "weeklyVerseRef", "contactEmail", "location", "footerHeading", "footerBio",
+        "footerCopyright", "footerCredit", "hideDemoSermons", "hideDemoArticles",
+        "hideDemoPrograms", "youtubeUrl", "facebookUrl", "instagramUrl", "tiktokUrl",
+        "xUrl", "whatsappUrl", "podcastUrl", "updatedBy", "updatedAt"
+      ]
+    },
+    "PrayerRequest": {
+      "title": "PrayerRequest",
+      "description": "Private prayer request, faith question, or ministry inquiry sent to Evangelist Shepherd.",
+      "type": "object",
+      "properties": {
+        "senderName": { "type": "string", "minLength": 2, "maxLength": 80 },
+        "senderEmail": { "type": "string", "maxLength": 120 },
+        "senderPhone": { "type": "string", "maxLength": 40 },
+        "requestType": {
+          "type": "string",
+          "enum": ["Prayer Request", "Inquiry", "Testimony", "General Message"]
+        },
+        "subject": { "type": "string", "minLength": 2, "maxLength": 140 },
+        "message": { "type": "string", "minLength": 5, "maxLength": 3000 },
+        "isPrivate": { "type": "boolean" },
+        "status": {
+          "type": "string",
+          "enum": ["unread", "prayed_over", "replied", "archived"]
+        },
+        "adminNote": { "type": "string", "maxLength": 1000 },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": [
+        "senderName", "senderEmail", "senderPhone", "requestType", "subject",
+        "message", "isPrivate", "status", "adminNote", "createdAt", "updatedAt"
+      ]
+    },
+    "EngagementMetric": {
+      "title": "EngagementMetric",
+      "description": "Shared synchronized counters (views and reactions) for starter posts, videos, and faith articles.",
+      "type": "object",
+      "properties": {
+        "viewCount": { "type": "number" },
+        "amenCount": { "type": "number" },
+        "prayCount": { "type": "number" },
+        "loveCount": { "type": "number" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["viewCount", "amenCount", "prayCount", "loveCount", "updatedAt"]
+    }
+  },
+  "firestore": {
+    "/sermons/{sermonId}": {
+      "schema": { "$ref": "#/entities/Sermon" },
+      "description": "Short sermons (with YouTube links) and encouragement posts with visitor reactions and view counts."
+    },
+    "/faith_articles/{articleId}": {
+      "schema": { "$ref": "#/entities/FaithArticle" },
+      "description": "Blog posts and biblical answers about faith with view counts."
+    },
+    "/programs/{programId}": {
+      "schema": { "$ref": "#/entities/MinistryProgram" },
+      "description": "Active ministry programs and fellowships."
+    },
+    "/ministry_settings/{settingId}": {
+      "schema": { "$ref": "#/entities/MinistrySettings" },
+      "description": "Ministry profile configuration, portrait, weekly verse, and social media links."
+    },
+    "/prayer_requests/{requestId}": {
+      "schema": { "$ref": "#/entities/PrayerRequest" },
+      "description": "Private prayer requests, faith questions, and ministry inquiries."
+    },
+    "/engagement_metrics/{metricId}": {
+      "schema": { "$ref": "#/entities/EngagementMetric" },
+      "description": "Synchronized public engagement counters (views and reactions) for starter items."
+    }
+  }
+}

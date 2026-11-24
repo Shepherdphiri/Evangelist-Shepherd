@@ -1,0 +1,6 @@
+{
+  "name": "Evangelist Shepherd",
+  "description": "Gospel outreach, short sermons, daily words of encouragement, social media portals, and direct prayer request ministry by Evangelist Shepherd.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
