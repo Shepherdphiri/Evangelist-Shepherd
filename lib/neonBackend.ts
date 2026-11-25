@@ -432,7 +432,10 @@ function mapSettingsRow(r: Record<string, unknown> | undefined) {
     heroPrimaryCtaLabel: String(r.hero_primary_cta_label || DEFAULT_MINISTRY_SETTINGS_DATA.heroPrimaryCtaLabel),
     heroSecondaryCtaLabel: String(r.hero_secondary_cta_label || DEFAULT_MINISTRY_SETTINGS_DATA.heroSecondaryCtaLabel),
     aboutBio: String(r.about_bio || DEFAULT_MINISTRY_SETTINGS_DATA.aboutBio),
-    portraitUrl: String(r.portrait_url || DEFAULT_MINISTRY_SETTINGS_DATA.portraitUrl),
+    portraitUrl:
+      r.portrait_url !== undefined && r.portrait_url !== null
+        ? String(r.portrait_url)
+        : DEFAULT_MINISTRY_SETTINGS_DATA.portraitUrl,
     weeklyVerse: String(r.weekly_verse || DEFAULT_MINISTRY_SETTINGS_DATA.weeklyVerse),
     weeklyVerseRef: String(r.weekly_verse_ref || DEFAULT_MINISTRY_SETTINGS_DATA.weeklyVerseRef),
     contactEmail: String(r.contact_email ?? ''),
@@ -857,7 +860,7 @@ export async function handleNeonApiRequest(
       const whatsappUrl = sanitizeUrl(body.whatsappUrl, 300);
       const podcastUrl = sanitizeUrl(body.podcastUrl, 300);
 
-      await sql`
+      const savedRows = (await sql`
         INSERT INTO ministry_settings (
           id, evangelist_name, hero_eyebrow, ministry_tagline,
           hero_primary_cta_label, hero_secondary_cta_label, about_bio,
@@ -903,8 +906,9 @@ export async function handleNeonApiRequest(
           podcast_url = EXCLUDED.podcast_url,
           updated_by = EXCLUDED.updated_by,
           updated_at = NOW()
-      `;
-      res.status(200).json({ ok: true });
+        RETURNING *
+      `) as Record<string, unknown>[];
+      res.status(200).json({ ok: true, settings: mapSettingsRow(savedRows[0]) });
       return;
     }
 

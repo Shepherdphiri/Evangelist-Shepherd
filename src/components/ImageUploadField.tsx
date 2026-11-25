@@ -67,7 +67,11 @@ function compressImageIfLarge(dataUrl: string, fileType: string): Promise<string
       }
       ctx.drawImage(img, 0, 0, width, height);
       const outputType = fileType === 'image/png' ? 'image/png' : 'image/jpeg';
-      resolve(canvas.toDataURL(outputType, 0.86));
+      let result = canvas.toDataURL(outputType, 0.85);
+      if (result.length > 1_600_000) {
+        result = canvas.toDataURL('image/jpeg', 0.82);
+      }
+      resolve(result);
     };
     img.onerror = () => resolve(dataUrl);
     img.src = dataUrl;

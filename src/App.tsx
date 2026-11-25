@@ -164,12 +164,19 @@ function EvangelistShepherdApp() {
     return () => unsubscribe();
   }, []);
 
+  const syncSeqRef = useRef(0);
+
   const applyNeonSnapshot = useCallback(
     (data: Awaited<ReturnType<typeof fetchNeonBootstrap>>) => {
       setPasswordAuthConfigured(Boolean(data.passwordAuthConfigured));
       setNeonAdminSession(Boolean(data.isAdminSession));
       if (!data.enabled) return;
-      if (data.settings) setSettings(data.settings);
+      if (data.settings) {
+        const nextSettings = data.settings;
+        setSettings((prev) =>
+          JSON.stringify(prev) === JSON.stringify(nextSettings) ? prev : nextSettings
+        );
+      }
       if (Array.isArray(data.sermons)) {
         const sortedSermons = [...data.sermons].sort(
           (a, b) => getTimestampMillis(b.createdAt) - getTimestampMillis(a.createdAt)
@@ -199,7 +206,11 @@ function EvangelistShepherdApp() {
   );
 
   const syncNeonData = useCallback(async () => {
+    const seq = ++syncSeqRef.current;
     const data = await fetchNeonBootstrap(user);
+    if (seq !== syncSeqRef.current) {
+      return data.enabled;
+    }
     applyNeonSnapshot(data);
     return data.enabled;
   }, [applyNeonSnapshot, user]);
@@ -220,12 +231,12 @@ function EvangelistShepherdApp() {
   }, [authReady, syncNeonData]);
 
   useEffect(() => {
-    if (dbMode !== 'neon') return;
+    if (dbMode !== 'neon' || studioOpen) return;
     const interval = window.setInterval(() => {
       void syncNeonData();
     }, 8000);
     return () => window.clearInterval(interval);
-  }, [dbMode, syncNeonData]);
+  }, [dbMode, studioOpen, syncNeonData]);
 
   useEffect(() => {
     if (dbMode !== 'firestore') return;
@@ -895,6 +906,10 @@ function EvangelistShepherdApp() {
         useNeonDb={dbMode === 'neon'}
         passwordAuthConfigured={passwordAuthConfigured}
         onNeonDataChanged={() => void syncNeonData()}
+        onSettingsUpdated={(nextSettings) => {
+          syncSeqRef.current += 1;
+          setSettings(nextSettings);
+        }}
         sermons={firestoreSermons.length > 0 ? firestoreSermons : publishedPosts}
         hasFirestoreSermons={firestoreSermons.length > 0}
         articles={firestoreArticles.length > 0 ? firestoreArticles : publishedArticles}

@@ -79,6 +79,7 @@ interface MinistryStudioModalProps {
   useNeonDb?: boolean;
   passwordAuthConfigured?: boolean;
   onNeonDataChanged?: () => void;
+  onSettingsUpdated?: (nextSettings: MinistrySettings) => void;
   sermons: Sermon[];
   hasFirestoreSermons: boolean;
   articles: FaithArticle[];
@@ -97,6 +98,7 @@ export function MinistryStudioModal({
   useNeonDb = false,
   passwordAuthConfigured = false,
   onNeonDataChanged,
+  onSettingsUpdated,
   sermons,
   hasFirestoreSermons,
   articles,
@@ -185,16 +187,34 @@ export function MinistryStudioModal({
 
   // Settings / Social state
   const [settingsForm, setSettingsForm] = useState<MinistrySettings>(settings);
+  const [settingsDirty, setSettingsDirty] = useState(false);
   const [savingSettings, setSavingSettings] = useState(false);
   const [settingsFeedback, setSettingsFeedback] = useState('');
+
+  const patchSettingsForm = (patch: Partial<MinistrySettings>) => {
+    setSettingsDirty(true);
+    setSettingsForm((prev) => ({ ...prev, ...patch }));
+  };
 
   useEffect(() => {
     setActiveTab(initialTab);
   }, [initialTab, isOpen]);
 
   useEffect(() => {
-    setSettingsForm(settings);
-  }, [settings]);
+    if (isOpen) {
+      setSettingsForm(settings);
+      setSettingsDirty(false);
+      setSettingsFeedback('');
+    }
+    // Initialize form snapshot only when modal opens
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isOpen]);
+
+  useEffect(() => {
+    if (!isOpen || !settingsDirty) {
+      setSettingsForm(settings);
+    }
+  }, [isOpen, settings, settingsDirty]);
 
   useEffect(() => {
     if (!isOpen || !isAdmin || (!useNeonDb && !user)) {
@@ -1635,17 +1655,26 @@ export function MinistryStudioModal({
 
     try {
       if (useNeonDb) {
-        await postNeonAction(
+        const result = await postNeonAction<{
+          ok: boolean;
+          settings?: MinistrySettings;
+        }>(
           'save_settings',
           settingsForm as unknown as Record<string, unknown>,
           user
         );
+        if (result.settings) {
+          setSettingsForm(result.settings);
+          onSettingsUpdated?.(result.settings);
+        }
+        setSettingsDirty(false);
         onNeonDataChanged?.();
       } else if (user) {
         const payload = buildSettingsPayload(settingsForm, user.uid);
         await setDoc(doc(db, 'ministry_settings', 'main'), payload);
+        setSettingsDirty(false);
       }
-      setSettingsFeedback('Hero section, profile, footer & social links saved.');
+      setSettingsFeedback('Hero section, portrait, footer & social links saved.');
     } catch (error) {
       if (!useNeonDb) {
         handleFirestoreError(error, OperationType.WRITE, 'ministry_settings/main');
@@ -2042,7 +2071,7 @@ export function MinistryStudioModal({
                             YouTube Video Link * (Plays inside site pop-up player)
                           </label>
                           <input
-                            type="url"
+                            type="text"
                             required
                             maxLength={VALIDATION_LIMITS.sermon.videoUrlMax}
                             value={videoUrl}
@@ -3178,13 +3207,22 @@ export function MinistryStudioModal({
                   onSubmit={handleSaveSettings}
                   className="bg-white border border-[#E4E4E7] rounded-2xl p-6 space-y-6"
                 >
-                  <div>
-                    <h3 className="text-xl font-semibold text-[#0B0B0D]">
-                      Hero Section, Profile, Footer &amp; Social Links
-                    </h3>
-                    <p className="text-xs text-[#52525B]">
-                      Customize the Home Hero headline, portrait, weekly scripture, footer text &amp; credit, and social media portals.
-                    </p>
+                  <div className="flex flex-wrap items-center justify-between gap-4">
+                    <div>
+                      <h3 className="text-xl font-semibold text-[#0B0B0D]">
+                        Hero Section, Profile, Footer &amp; Social Links
+                      </h3>
+                      <p className="text-xs text-[#52525B]">
+                        Customize the Home Hero headline, portrait, weekly scripture, footer text &amp; credit, and social media portals.
+                      </p>
+                    </div>
+                    <button
+                      type="submit"
+                      disabled={savingSettings || !isAdmin}
+                      className="px-5 py-2 rounded-lg text-xs font-semibold bg-[#2563EB] text-white hover:bg-[#1D4ED8] cursor-pointer disabled:opacity-50 whitespace-nowrap"
+                    >
+                      {savingSettings ? 'Saving...' : 'Save Changes'}
+                    </button>
                   </div>
 
                   {settingsFeedback && (
@@ -3211,10 +3249,7 @@ export function MinistryStudioModal({
                           maxLength={VALIDATION_LIMITS.settings.heroEyebrowMax}
                           value={settingsForm.heroEyebrow}
                           onChange={(e) =>
-                            setSettingsForm({
-                              ...settingsForm,
-                              heroEyebrow: e.target.value,
-                            })
+                            patchSettingsForm({ heroEyebrow: e.target.value })
                           }
                           placeholder="Gospel Ministry · Faith Portfolio · Daily Grace"
                           className="w-full px-3 py-2 rounded-lg text-sm bg-white border border-[#E4E4E7]"
@@ -3231,10 +3266,7 @@ export function MinistryStudioModal({
                           maxLength={VALIDATION_LIMITS.settings.evangelistNameMax}
                           value={settingsForm.evangelistName}
                           onChange={(e) =>
-                            setSettingsForm({
-                              ...settingsForm,
-                              evangelistName: e.target.value,
-                            })
+                            patchSettingsForm({ evangelistName: e.target.value })
                           }
                           className="w-full px-3 py-2 rounded-lg text-sm bg-white border border-[#E4E4E7]"
                         />
@@ -3252,10 +3284,7 @@ export function MinistryStudioModal({
                         maxLength={VALIDATION_LIMITS.settings.ministryTaglineMax}
                         value={settingsForm.ministryTagline}
                         onChange={(e) =>
-                          setSettingsForm({
-                            ...settingsForm,
-                            ministryTagline: e.target.value,
-                          })
+                          patchSettingsForm({ ministryTagline: e.target.value })
                         }
                         className="w-full px-3 py-2 rounded-lg text-sm bg-white border border-[#E4E4E7]"
                       />
@@ -3273,10 +3302,7 @@ export function MinistryStudioModal({
                           maxLength={VALIDATION_LIMITS.settings.heroCtaMax}
                           value={settingsForm.heroPrimaryCtaLabel}
                           onChange={(e) =>
-                            setSettingsForm({
-                              ...settingsForm,
-                              heroPrimaryCtaLabel: e.target.value,
-                            })
+                            patchSettingsForm({ heroPrimaryCtaLabel: e.target.value })
                           }
                           placeholder="Watch Sermons"
                           className="w-full px-3 py-2 rounded-lg text-sm bg-white border border-[#E4E4E7]"
@@ -3293,10 +3319,7 @@ export function MinistryStudioModal({
                           maxLength={VALIDATION_LIMITS.settings.heroCtaMax}
                           value={settingsForm.heroSecondaryCtaLabel}
                           onChange={(e) =>
-                            setSettingsForm({
-                              ...settingsForm,
-                              heroSecondaryCtaLabel: e.target.value,
-                            })
+                            patchSettingsForm({ heroSecondaryCtaLabel: e.target.value })
                           }
                           placeholder="Answers About Faith"
                           className="w-full px-3 py-2 rounded-lg text-sm bg-white border border-[#E4E4E7]"
@@ -3308,16 +3331,13 @@ export function MinistryStudioModal({
                       label="Hero Portrait Image"
                       value={settingsForm.portraitUrl}
                       onChange={(nextUrl) =>
-                        setSettingsForm({
-                          ...settingsForm,
-                          portraitUrl: nextUrl,
-                        })
+                        patchSettingsForm({ portraitUrl: nextUrl })
                       }
                       user={user}
                       isAdmin={isAdmin}
                       useNeonDb={useNeonDb}
                       presets={COVER_IMAGE_PRESETS}
-                      helperText="Upload a portrait image from your device or select starter artwork."
+                      helperText="Upload a portrait image from your device or select starter artwork, then click Save Settings."
                     />
 
                     <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
@@ -3332,10 +3352,7 @@ export function MinistryStudioModal({
                           maxLength={VALIDATION_LIMITS.settings.weeklyVerseMax}
                           value={settingsForm.weeklyVerse}
                           onChange={(e) =>
-                            setSettingsForm({
-                              ...settingsForm,
-                              weeklyVerse: e.target.value,
-                            })
+                            patchSettingsForm({ weeklyVerse: e.target.value })
                           }
                           className="w-full px-3 py-2 rounded-lg text-sm bg-white border border-[#E4E4E7]"
                         />
@@ -3351,10 +3368,7 @@ export function MinistryStudioModal({
                           maxLength={VALIDATION_LIMITS.settings.weeklyVerseRefMax}
                           value={settingsForm.weeklyVerseRef}
                           onChange={(e) =>
-                            setSettingsForm({
-                              ...settingsForm,
-                              weeklyVerseRef: e.target.value,
-                            })
+                            patchSettingsForm({ weeklyVerseRef: e.target.value })
                           }
                           className="w-full px-3 py-2 rounded-lg text-sm bg-white border border-[#E4E4E7]"
                         />
@@ -3369,14 +3383,11 @@ export function MinistryStudioModal({
                         Public Email
                       </label>
                       <input
-                        type="email"
+                        type="text"
                         maxLength={VALIDATION_LIMITS.settings.contactEmailMax}
                         value={settingsForm.contactEmail}
                         onChange={(e) =>
-                          setSettingsForm({
-                            ...settingsForm,
-                            contactEmail: e.target.value,
-                          })
+                          patchSettingsForm({ contactEmail: e.target.value })
                         }
                         className="w-full px-3 py-2 rounded-lg text-sm bg-[#FAFAFA] border border-[#E4E4E7]"
                       />
@@ -3390,10 +3401,7 @@ export function MinistryStudioModal({
                         maxLength={VALIDATION_LIMITS.settings.locationMax}
                         value={settingsForm.location}
                         onChange={(e) =>
-                          setSettingsForm({
-                            ...settingsForm,
-                            location: e.target.value,
-                          })
+                          patchSettingsForm({ location: e.target.value })
                         }
                         className="w-full px-3 py-2 rounded-lg text-sm bg-[#FAFAFA] border border-[#E4E4E7]"
                       />
@@ -3410,10 +3418,7 @@ export function MinistryStudioModal({
                       maxLength={VALIDATION_LIMITS.settings.aboutBioMax}
                       value={settingsForm.aboutBio}
                       onChange={(e) =>
-                        setSettingsForm({
-                          ...settingsForm,
-                          aboutBio: e.target.value,
-                        })
+                        patchSettingsForm({ aboutBio: e.target.value })
                       }
                       className="w-full px-3 py-2 rounded-lg text-sm bg-[#FAFAFA] border border-[#E4E4E7]"
                     />
@@ -3437,10 +3442,7 @@ export function MinistryStudioModal({
                           maxLength={VALIDATION_LIMITS.settings.footerHeadingMax}
                           value={settingsForm.footerHeading}
                           onChange={(e) =>
-                            setSettingsForm({
-                              ...settingsForm,
-                              footerHeading: e.target.value,
-                            })
+                            patchSettingsForm({ footerHeading: e.target.value })
                           }
                           placeholder="EVANGELIST SHEPHERD"
                           className="w-full px-3 py-2 rounded-lg text-sm bg-white border border-[#E4E4E7]"
@@ -3455,10 +3457,7 @@ export function MinistryStudioModal({
                           maxLength={VALIDATION_LIMITS.settings.footerCreditMax}
                           value={settingsForm.footerCredit}
                           onChange={(e) =>
-                            setSettingsForm({
-                              ...settingsForm,
-                              footerCredit: e.target.value,
-                            })
+                            patchSettingsForm({ footerCredit: e.target.value })
                           }
                           placeholder="Developed by Shepherd Zisper Phiri"
                           className="w-full px-3 py-2 rounded-lg text-sm bg-white border border-[#E4E4E7]"
@@ -3475,10 +3474,7 @@ export function MinistryStudioModal({
                         maxLength={VALIDATION_LIMITS.settings.footerBioMax}
                         value={settingsForm.footerBio}
                         onChange={(e) =>
-                          setSettingsForm({
-                            ...settingsForm,
-                            footerBio: e.target.value,
-                          })
+                          patchSettingsForm({ footerBio: e.target.value })
                         }
                         placeholder="Short sermons, honest answers about Christian faith, and daily words of encouragement."
                         className="w-full px-3 py-2 rounded-lg text-sm bg-white border border-[#E4E4E7]"
@@ -3494,10 +3490,7 @@ export function MinistryStudioModal({
                         maxLength={VALIDATION_LIMITS.settings.footerCopyrightMax}
                         value={settingsForm.footerCopyright}
                         onChange={(e) =>
-                          setSettingsForm({
-                            ...settingsForm,
-                            footerCopyright: e.target.value,
-                          })
+                          patchSettingsForm({ footerCopyright: e.target.value })
                         }
                         placeholder="© 2026 Evangelist Shepherd. All rights reserved."
                         className="w-full px-3 py-2 rounded-lg text-sm bg-white border border-[#E4E4E7]"
@@ -3526,14 +3519,11 @@ export function MinistryStudioModal({
                             {field.label}
                           </label>
                           <input
-                            type="url"
+                            type="text"
                             maxLength={VALIDATION_LIMITS.settings.socialUrlMax}
                             value={settingsForm[field.key]}
                             onChange={(e) =>
-                              setSettingsForm({
-                                ...settingsForm,
-                                [field.key]: e.target.value,
-                              })
+                              patchSettingsForm({ [field.key]: e.target.value })
                             }
                             placeholder="https://..."
                             className="w-full px-3 py-2 rounded-lg text-sm bg-[#FAFAFA] border border-[#E4E4E7]"
