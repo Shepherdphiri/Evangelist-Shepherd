@@ -85,15 +85,85 @@ function cleanInt(val: unknown, min: number, max: number, fallback: number): num
 function sanitizeUrl(val: unknown, max: number): string {
   const trimmed = cleanStr(val, max);
   if (!trimmed) return '';
+  const lower = trimmed.toLowerCase();
   if (
-    trimmed.startsWith('https://') ||
-    trimmed.startsWith('http://') ||
-    trimmed.startsWith('mailto:') ||
+    lower.startsWith('javascript:') ||
+    lower.startsWith('data:') ||
+    lower.startsWith('vbscript:')
+  ) {
+    return '';
+  }
+  if (
+    lower.startsWith('https://') ||
+    lower.startsWith('http://') ||
+    lower.startsWith('mailto:') ||
     trimmed.startsWith('/')
   ) {
     return trimmed;
   }
   return `https://${trimmed}`.slice(0, max);
+}
+
+interface CleanSocialPortalItem {
+  id: string;
+  name: string;
+  subtitle: string;
+  url: string;
+}
+
+function sanitizeSocialLinks(raw: unknown): CleanSocialPortalItem[] {
+  if (!Array.isArray(raw)) return [];
+  const items: CleanSocialPortalItem[] = [];
+  for (let i = 0; i < Math.min(raw.length, 20); i += 1) {
+    const entry = raw[i];
+    if (!entry || typeof entry !== 'object') continue;
+    const obj = entry as Record<string, unknown>;
+    const rawId = cleanStr(obj.id, 64).replace(/[^a-zA-Z0-9_-]/g, '');
+    const name = cleanStr(obj.name, 60);
+    const subtitle = cleanStr(obj.subtitle, 160);
+    const url = sanitizeUrl(obj.url, 300);
+    if (!name && !url) continue;
+    items.push({
+      id: rawId || `social_${i + 1}`,
+      name: name || 'Social Link',
+      subtitle,
+      url,
+    });
+  }
+  return items;
+}
+
+function buildCoreSocialDefaults(
+  youtubeUrl: string,
+  facebookUrl: string,
+  tiktokUrl: string
+): CleanSocialPortalItem[] {
+  const items: CleanSocialPortalItem[] = [];
+  if (youtubeUrl) {
+    items.push({
+      id: 'youtube',
+      name: 'YouTube Channel',
+      subtitle: 'Short video sermons, Gospel teachings & live streams',
+      url: youtubeUrl,
+    });
+  }
+  if (facebookUrl) {
+    items.push({
+      id: 'facebook',
+      name: 'Facebook Ministry',
+      subtitle: 'Weekly devotions, fellowship updates & live prayer',
+      url: facebookUrl,
+    });
+  }
+  if (tiktokUrl) {
+    items.push({
+      id: 'tiktok',
+      name: 'TikTok',
+      subtitle: '60-second Gospel truths & morning encouragement',
+      url: tiktokUrl,
+    });
+  }
+  return items;
 }
 
 function makeId(prefix: string): string {
@@ -167,9 +237,14 @@ async function ensureSchemaAndSeed(sql: SqlClient): Promise<void> {
           x_url TEXT NOT NULL DEFAULT '',
           whatsapp_url TEXT NOT NULL DEFAULT '',
           podcast_url TEXT NOT NULL DEFAULT '',
+          social_links TEXT NOT NULL DEFAULT '',
           updated_by TEXT NOT NULL DEFAULT '',
           updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
         )
+      `;
+      await sql`
+        ALTER TABLE ministry_settings
+        ADD COLUMN IF NOT EXISTS social_links TEXT NOT NULL DEFAULT ''
       `;
 
       await sql`
@@ -451,6 +526,23 @@ function mapSettingsRow(r: Record<string, unknown> | undefined) {
     r.portrait_url !== undefined && r.portrait_url !== null
       ? String(r.portrait_url)
       : '';
+  const youtubeUrl = String(r.youtube_url ?? '');
+  const facebookUrl = String(r.facebook_url ?? '');
+  const tiktokUrl = String(r.tiktok_url ?? '');
+
+  let socialLinks = buildCoreSocialDefaults(youtubeUrl, facebookUrl, tiktokUrl);
+  const rawSocialJson = typeof r.social_links === 'string' ? r.social_links.trim() : '';
+  if (rawSocialJson.length > 0) {
+    try {
+      const parsed = JSON.parse(rawSocialJson);
+      if (Array.isArray(parsed)) {
+        socialLinks = sanitizeSocialLinks(parsed);
+      }
+    } catch {
+      // keep core defaults if malformed JSON
+    }
+  }
+
   return {
     evangelistName: String(r.evangelist_name || DEFAULT_MINISTRY_SETTINGS_DATA.evangelistName),
     heroEyebrow: String(r.hero_eyebrow || DEFAULT_MINISTRY_SETTINGS_DATA.heroEyebrow),
@@ -470,13 +562,14 @@ function mapSettingsRow(r: Record<string, unknown> | undefined) {
     hideDemoSermons: Boolean(r.hide_demo_sermons),
     hideDemoArticles: Boolean(r.hide_demo_articles),
     hideDemoPrograms: Boolean(r.hide_demo_programs),
-    youtubeUrl: String(r.youtube_url ?? ''),
-    facebookUrl: String(r.facebook_url ?? ''),
+    youtubeUrl,
+    facebookUrl,
     instagramUrl: String(r.instagram_url ?? ''),
-    tiktokUrl: String(r.tiktok_url ?? ''),
+    tiktokUrl,
     xUrl: String(r.x_url ?? ''),
     whatsappUrl: String(r.whatsapp_url ?? ''),
     podcastUrl: String(r.podcast_url ?? ''),
+    socialLinks,
   };
 }
 
@@ -875,13 +968,31 @@ export async function handleNeonApiRequest(
       const hideDemoSermons = Boolean(body.hideDemoSermons);
       const hideDemoArticles = Boolean(body.hideDemoArticles);
       const hideDemoPrograms = Boolean(body.hideDemoPrograms);
-      const youtubeUrl = sanitizeUrl(body.youtubeUrl, 300);
-      const facebookUrl = sanitizeUrl(body.facebookUrl, 300);
-      const instagramUrl = sanitizeUrl(body.instagramUrl, 300);
-      const tiktokUrl = sanitizeUrl(body.tiktokUrl, 300);
-      const xUrl = sanitizeUrl(body.xUrl, 300);
-      const whatsappUrl = sanitizeUrl(body.whatsappUrl, 300);
-      const podcastUrl = sanitizeUrl(body.podcastUrl, 300);
+      const hasSocialLinksArray = Array.isArray(body.socialLinks);
+      const cleanedSocialLinks = hasSocialLinksArray
+        ? sanitizeSocialLinks(body.socialLinks)
+        : buildCoreSocialDefaults(
+            sanitizeUrl(body.youtubeUrl, 300),
+            sanitizeUrl(body.facebookUrl, 300),
+            sanitizeUrl(body.tiktokUrl, 300)
+          );
+      const findMatchingUrl = (keyword: string, fallbackVal: string) => {
+        const match = cleanedSocialLinks.find(
+          (item) =>
+            item.id.toLowerCase().includes(keyword) ||
+            item.name.toLowerCase().includes(keyword) ||
+            item.url.toLowerCase().includes(keyword)
+        );
+        return match ? match.url : hasSocialLinksArray ? '' : fallbackVal;
+      };
+      const youtubeUrl = findMatchingUrl('youtube', sanitizeUrl(body.youtubeUrl, 300));
+      const facebookUrl = findMatchingUrl('facebook', sanitizeUrl(body.facebookUrl, 300));
+      const instagramUrl = findMatchingUrl('instagram', sanitizeUrl(body.instagramUrl, 300));
+      const tiktokUrl = findMatchingUrl('tiktok', sanitizeUrl(body.tiktokUrl, 300));
+      const xUrl = findMatchingUrl('twitter', sanitizeUrl(body.xUrl, 300));
+      const whatsappUrl = findMatchingUrl('whatsapp', sanitizeUrl(body.whatsappUrl, 300));
+      const podcastUrl = findMatchingUrl('podcast', sanitizeUrl(body.podcastUrl, 300));
+      const socialLinksJson = JSON.stringify(cleanedSocialLinks);
 
       const savedRows = (await sql`
         INSERT INTO ministry_settings (
@@ -891,7 +1002,7 @@ export async function handleNeonApiRequest(
           location, footer_heading, footer_bio, footer_copyright,
           footer_credit, hide_demo_sermons, hide_demo_articles,
           hide_demo_programs, youtube_url, facebook_url, instagram_url,
-          tiktok_url, x_url, whatsapp_url, podcast_url, updated_by, updated_at
+          tiktok_url, x_url, whatsapp_url, podcast_url, social_links, updated_by, updated_at
         ) VALUES (
           'main', ${evangelistName}, ${heroEyebrow}, ${ministryTagline},
           ${heroPrimaryCtaLabel}, ${heroSecondaryCtaLabel}, ${aboutBio},
@@ -899,7 +1010,7 @@ export async function handleNeonApiRequest(
           ${location}, ${footerHeading}, ${footerBio}, ${footerCopyright},
           ${footerCredit}, ${hideDemoSermons}, ${hideDemoArticles},
           ${hideDemoPrograms}, ${youtubeUrl}, ${facebookUrl}, ${instagramUrl},
-          ${tiktokUrl}, ${xUrl}, ${whatsappUrl}, ${podcastUrl}, ${admin.uid}, NOW()
+          ${tiktokUrl}, ${xUrl}, ${whatsappUrl}, ${podcastUrl}, ${socialLinksJson}, ${admin.uid}, NOW()
         )
         ON CONFLICT (id) DO UPDATE SET
           evangelist_name = EXCLUDED.evangelist_name,
@@ -927,6 +1038,7 @@ export async function handleNeonApiRequest(
           x_url = EXCLUDED.x_url,
           whatsapp_url = EXCLUDED.whatsapp_url,
           podcast_url = EXCLUDED.podcast_url,
+          social_links = EXCLUDED.social_links,
           updated_by = EXCLUDED.updated_by,
           updated_at = NOW()
         RETURNING *

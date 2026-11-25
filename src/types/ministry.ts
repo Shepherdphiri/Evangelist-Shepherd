@@ -76,6 +76,13 @@ export interface MinistryProgram {
   updatedAt: Timestamp | Date | null;
 }
 
+export interface SocialPortalItem {
+  id: string;
+  name: string;
+  subtitle: string;
+  url: string;
+}
+
 export interface MinistrySettings {
   evangelistName: string;
   heroEyebrow: string;
@@ -102,6 +109,7 @@ export interface MinistrySettings {
   xUrl: string;
   whatsappUrl: string;
   podcastUrl: string;
+  socialLinks?: SocialPortalItem[];
   updatedBy?: string;
   updatedAt?: Timestamp | Date | null;
 }
@@ -194,6 +202,8 @@ export const VALIDATION_LIMITS = {
     footerCopyrightMax: 140,
     footerCreditMax: 120,
     socialUrlMax: 300,
+    socialNameMax: 60,
+    socialSubtitleMax: 160,
   },
   prayer: {
     senderNameMin: 2,
@@ -215,10 +225,18 @@ export function truncateText(value: string, max: number): string {
 export function sanitizeExternalUrl(url: string, max: number): string {
   const trimmed = url.trim().slice(0, max);
   if (!trimmed) return '';
+  const lower = trimmed.toLowerCase();
   if (
-    trimmed.startsWith('https://') ||
-    trimmed.startsWith('http://') ||
-    trimmed.startsWith('mailto:') ||
+    lower.startsWith('javascript:') ||
+    lower.startsWith('data:') ||
+    lower.startsWith('vbscript:')
+  ) {
+    return '';
+  }
+  if (
+    lower.startsWith('https://') ||
+    lower.startsWith('http://') ||
+    lower.startsWith('mailto:') ||
     trimmed.startsWith('/')
   ) {
     return trimmed;

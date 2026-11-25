@@ -1,6 +1,7 @@
 import {
   ArrowUpRight,
   Globe,
+  Link2,
   Mail,
   MessageCircle,
   Mic,
@@ -8,7 +9,11 @@ import {
   Radio,
   Share2,
 } from 'lucide-react';
-import { MinistrySettings } from '../types/ministry';
+import {
+  MinistrySettings,
+  SocialPortalItem,
+  sanitizeExternalUrl,
+} from '../types/ministry';
 
 interface SocialPortalsSectionProps {
   settings: MinistrySettings;
@@ -16,12 +21,47 @@ interface SocialPortalsSectionProps {
   onOpenStudioSocial: () => void;
 }
 
-interface PortalItem {
-  id: string;
-  name: string;
-  subtitle: string;
-  url: string;
-  icon: typeof PlaySquare;
+function getSocialIcon(name: string, url: string) {
+  const haystack = `${name} ${url}`.toLowerCase();
+  if (haystack.includes('youtube') || haystack.includes('youtu.be')) return PlaySquare;
+  if (haystack.includes('tiktok')) return Radio;
+  if (haystack.includes('whatsapp') || haystack.includes('wa.me')) return MessageCircle;
+  if (haystack.includes('podcast') || haystack.includes('spotify') || haystack.includes('audio')) return Mic;
+  if (haystack.includes('instagram')) return Share2;
+  if (haystack.includes('facebook') || haystack.includes('fb.com') || haystack.includes('twitter') || haystack.includes('x.com')) return Globe;
+  return Link2;
+}
+
+function resolvePortals(settings: MinistrySettings): SocialPortalItem[] {
+  if (Array.isArray(settings.socialLinks)) {
+    return settings.socialLinks;
+  }
+  const defaults: SocialPortalItem[] = [];
+  if (settings.youtubeUrl) {
+    defaults.push({
+      id: 'youtube',
+      name: 'YouTube Channel',
+      subtitle: 'Short video sermons, Gospel teachings & live streams',
+      url: settings.youtubeUrl,
+    });
+  }
+  if (settings.facebookUrl) {
+    defaults.push({
+      id: 'facebook',
+      name: 'Facebook Ministry',
+      subtitle: 'Weekly devotions, fellowship updates & live prayer',
+      url: settings.facebookUrl,
+    });
+  }
+  if (settings.tiktokUrl) {
+    defaults.push({
+      id: 'tiktok',
+      name: 'TikTok',
+      subtitle: '60-second Gospel truths & morning encouragement',
+      url: settings.tiktokUrl,
+    });
+  }
+  return defaults;
 }
 
 export function SocialPortalsSection({
@@ -29,57 +69,12 @@ export function SocialPortalsSection({
   isAdmin,
   onOpenStudioSocial,
 }: SocialPortalsSectionProps) {
-  const portals: PortalItem[] = [
-    {
-      id: 'youtube',
-      name: 'YouTube Channel',
-      subtitle: 'Short video sermons, Gospel teachings & live streams',
-      url: settings.youtubeUrl,
-      icon: PlaySquare,
-    },
-    {
-      id: 'facebook',
-      name: 'Facebook Ministry',
-      subtitle: 'Weekly devotions, fellowship updates & live prayer',
-      url: settings.facebookUrl,
-      icon: Globe,
-    },
-    {
-      id: 'instagram',
-      name: 'Instagram',
-      subtitle: 'Daily scripture graphics & encouragement reels',
-      url: settings.instagramUrl,
-      icon: Share2,
-    },
-    {
-      id: 'tiktok',
-      name: 'TikTok',
-      subtitle: '60-second Gospel truths & morning encouragement',
-      url: settings.tiktokUrl,
-      icon: Radio,
-    },
-    {
-      id: 'x',
-      name: 'X (Twitter)',
-      subtitle: 'Daily prayer prompts & brief biblical reflections',
-      url: settings.xUrl,
-      icon: Globe,
-    },
-    {
-      id: 'whatsapp',
-      name: 'WhatsApp Channel',
-      subtitle: 'Direct devotional broadcasts & ministry updates',
-      url: settings.whatsappUrl,
-      icon: MessageCircle,
-    },
-    {
-      id: 'podcast',
-      name: 'Audio Podcast',
-      subtitle: 'Listen to sermons on the go anywhere',
-      url: settings.podcastUrl,
-      icon: Mic,
-    },
-  ].filter((item) => item.url && item.url.trim().length > 0);
+  const portals = resolvePortals(settings)
+    .map((item) => ({
+      ...item,
+      url: sanitizeExternalUrl(item.url || '', 300),
+    }))
+    .filter((item) => item.url.startsWith('https://') || item.url.startsWith('http://'));
 
   return (
     <section
@@ -111,7 +106,7 @@ export function SocialPortalsSection({
 
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
         {portals.map((portal) => {
-          const Icon = portal.icon;
+          const Icon = getSocialIcon(portal.name, portal.url);
           return (
             <a
               key={portal.id}
@@ -130,9 +125,11 @@ export function SocialPortalsSection({
                 <h3 className="text-base sm:text-lg font-semibold text-[#0B0B0D] group-hover:text-[#2563EB] transition-colors">
                   {portal.name}
                 </h3>
-                <p className="text-xs sm:text-sm text-[#52525B] leading-relaxed">
-                  {portal.subtitle}
-                </p>
+                {portal.subtitle && (
+                  <p className="text-xs sm:text-sm text-[#52525B] leading-relaxed">
+                    {portal.subtitle}
+                  </p>
+                )}
               </div>
             </a>
           );

@@ -5,6 +5,27 @@ export const PRAYER_IMAGE_PATH = '';
 
 export const COVER_IMAGE_PRESETS: Array<{ label: string; path: string }> = [];
 
+export const DEFAULT_SOCIAL_LINKS = [
+  {
+    id: 'youtube',
+    name: 'YouTube Channel',
+    subtitle: 'Short video sermons, Gospel teachings & live streams',
+    url: 'https://www.youtube.com',
+  },
+  {
+    id: 'facebook',
+    name: 'Facebook Ministry',
+    subtitle: 'Weekly devotions, fellowship updates & live prayer',
+    url: 'https://www.facebook.com',
+  },
+  {
+    id: 'tiktok',
+    name: 'TikTok',
+    subtitle: '60-second Gospel truths & morning encouragement',
+    url: 'https://www.tiktok.com',
+  },
+];
+
 export const DEFAULT_MINISTRY_SETTINGS_DATA = {
   evangelistName: 'EVANGELIST SHEPHERD',
   heroEyebrow: 'Gospel Ministry · Faith Portfolio · Daily Grace',
@@ -30,11 +51,12 @@ export const DEFAULT_MINISTRY_SETTINGS_DATA = {
   hideDemoPrograms: false,
   youtubeUrl: 'https://www.youtube.com',
   facebookUrl: 'https://www.facebook.com',
-  instagramUrl: 'https://www.instagram.com',
+  instagramUrl: '',
   tiktokUrl: 'https://www.tiktok.com',
-  xUrl: 'https://x.com',
+  xUrl: '',
   whatsappUrl: '',
   podcastUrl: '',
+  socialLinks: DEFAULT_SOCIAL_LINKS,
 };
 
 export interface StarterSermonSeed {

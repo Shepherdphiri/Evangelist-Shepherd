@@ -46,6 +46,7 @@ import {
   PrayerRequestStatus,
   Sermon,
   SermonCategory,
+  SocialPortalItem,
   VALIDATION_LIMITS,
   formatDateValue,
   generateDocumentId,
@@ -190,9 +191,92 @@ export function MinistryStudioModal({
   const [savingSettings, setSavingSettings] = useState(false);
   const [settingsFeedback, setSettingsFeedback] = useState('');
 
+  const getEditableSocialLinks = (source: MinistrySettings): SocialPortalItem[] => {
+    if (Array.isArray(source.socialLinks)) {
+      return source.socialLinks;
+    }
+    const items: SocialPortalItem[] = [];
+    if (source.youtubeUrl) {
+      items.push({
+        id: 'youtube',
+        name: 'YouTube Channel',
+        subtitle: 'Short video sermons, Gospel teachings & live streams',
+        url: source.youtubeUrl,
+      });
+    }
+    if (source.facebookUrl) {
+      items.push({
+        id: 'facebook',
+        name: 'Facebook Ministry',
+        subtitle: 'Weekly devotions, fellowship updates & live prayer',
+        url: source.facebookUrl,
+      });
+    }
+    if (source.tiktokUrl) {
+      items.push({
+        id: 'tiktok',
+        name: 'TikTok',
+        subtitle: '60-second Gospel truths & morning encouragement',
+        url: source.tiktokUrl,
+      });
+    }
+    return items;
+  };
+
   const patchSettingsForm = (patch: Partial<MinistrySettings>) => {
     setSettingsDirty(true);
     setSettingsForm((prev) => ({ ...prev, ...patch }));
+  };
+
+  const patchSocialLinks = (nextLinks: SocialPortalItem[]) => {
+    const findUrl = (kw: string) =>
+      nextLinks.find(
+        (item) =>
+          item.id.toLowerCase().includes(kw) ||
+          item.name.toLowerCase().includes(kw) ||
+          item.url.toLowerCase().includes(kw)
+      )?.url || '';
+    patchSettingsForm({
+      socialLinks: nextLinks,
+      youtubeUrl: findUrl('youtube'),
+      facebookUrl: findUrl('facebook'),
+      instagramUrl: findUrl('instagram'),
+      tiktokUrl: findUrl('tiktok'),
+      xUrl: findUrl('twitter'),
+      whatsappUrl: findUrl('whatsapp'),
+      podcastUrl: findUrl('podcast'),
+    });
+  };
+
+  const handleAddSocialLink = (preset?: {
+    name: string;
+    subtitle: string;
+    url: string;
+  }) => {
+    const current = getEditableSocialLinks(settingsForm);
+    if (current.length >= 20) return;
+    const newItem: SocialPortalItem = {
+      id: `social_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+      name: preset?.name ?? '',
+      subtitle: preset?.subtitle ?? '',
+      url: preset?.url ?? '',
+    };
+    patchSocialLinks([...current, newItem]);
+  };
+
+  const handleUpdateSocialLink = (
+    id: string,
+    patch: Partial<SocialPortalItem>
+  ) => {
+    const current = getEditableSocialLinks(settingsForm);
+    patchSocialLinks(
+      current.map((item) => (item.id === id ? { ...item, ...patch } : item))
+    );
+  };
+
+  const handleRemoveSocialLink = (id: string) => {
+    const current = getEditableSocialLinks(settingsForm);
+    patchSocialLinks(current.filter((item) => item.id !== id));
   };
 
   useEffect(() => {
@@ -3493,39 +3577,174 @@ export function MinistryStudioModal({
                     </div>
                   </div>
 
-                  <div className="pt-2 border-t border-[#E4E4E7]">
-                    <p className="text-xs uppercase tracking-wider font-semibold text-[#2563EB] mb-3">
-                      Social Media Portals
-                    </p>
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                      {(
-                        [
-                          { key: 'youtubeUrl', label: 'YouTube URL' },
-                          { key: 'facebookUrl', label: 'Facebook URL' },
-                          { key: 'instagramUrl', label: 'Instagram URL' },
-                          { key: 'tiktokUrl', label: 'TikTok URL' },
-                          { key: 'xUrl', label: 'X (Twitter) URL' },
-                          { key: 'whatsappUrl', label: 'WhatsApp URL' },
-                          { key: 'podcastUrl', label: 'Audio Podcast URL' },
-                        ] as const
-                      ).map((field) => (
-                        <div key={field.key}>
-                          <label className="block text-xs font-semibold text-[#52525B] mb-1">
-                            {field.label}
-                          </label>
-                          <input
-                            type="text"
-                            maxLength={VALIDATION_LIMITS.settings.socialUrlMax}
-                            value={settingsForm[field.key]}
-                            onChange={(e) =>
-                              patchSettingsForm({ [field.key]: e.target.value })
-                            }
-                            placeholder="https://..."
-                            className="w-full px-3 py-2 rounded-lg text-sm bg-[#FAFAFA] border border-[#E4E4E7]"
-                          />
-                        </div>
+                  <div className="pt-2 border-t border-[#E4E4E7] space-y-4">
+                    <div className="flex flex-wrap items-center justify-between gap-3">
+                      <div>
+                        <p className="text-xs uppercase tracking-wider font-semibold text-[#2563EB]">
+                          Social Media Networks
+                        </p>
+                        <p className="text-xs text-[#52525B] mt-0.5">
+                          Defaults to YouTube, Facebook, and TikTok. Edit, remove, or add your own custom networks below.
+                        </p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => handleAddSocialLink()}
+                        className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg text-xs font-semibold bg-[#0B0B0D] text-white hover:bg-[#2563EB] transition-colors cursor-pointer whitespace-nowrap"
+                      >
+                        <Plus className="w-3.5 h-3.5" />
+                        <span>Add Social Network</span>
+                      </button>
+                    </div>
+
+                    <div className="flex flex-wrap items-center gap-1.5">
+                      <span className="text-[11px] text-[#71717A] mr-1">Quick add:</span>
+                      {[
+                        {
+                          label: 'YouTube',
+                          name: 'YouTube Channel',
+                          subtitle: 'Short video sermons, Gospel teachings & live streams',
+                          url: 'https://www.youtube.com/',
+                        },
+                        {
+                          label: 'Facebook',
+                          name: 'Facebook Ministry',
+                          subtitle: 'Weekly devotions, fellowship updates & live prayer',
+                          url: 'https://www.facebook.com/',
+                        },
+                        {
+                          label: 'TikTok',
+                          name: 'TikTok',
+                          subtitle: '60-second Gospel truths & morning encouragement',
+                          url: 'https://www.tiktok.com/',
+                        },
+                        {
+                          label: 'Instagram',
+                          name: 'Instagram',
+                          subtitle: 'Daily scripture graphics & encouragement reels',
+                          url: 'https://www.instagram.com/',
+                        },
+                        {
+                          label: 'WhatsApp',
+                          name: 'WhatsApp Channel',
+                          subtitle: 'Direct devotional broadcasts & ministry updates',
+                          url: 'https://whatsapp.com/channel/',
+                        },
+                        {
+                          label: 'Audio Podcast',
+                          name: 'Audio Podcast',
+                          subtitle: 'Listen to sermons on the go anywhere',
+                          url: 'https://',
+                        },
+                      ].map((preset) => (
+                        <button
+                          key={preset.label}
+                          type="button"
+                          onClick={() =>
+                            handleAddSocialLink({
+                              name: preset.name,
+                              subtitle: preset.subtitle,
+                              url: preset.url,
+                            })
+                          }
+                          className="px-2.5 py-1 rounded-md text-[11px] font-medium border border-[#E4E4E7] bg-[#FAFAFA] text-[#3F3F46] hover:border-[#2563EB] hover:text-[#2563EB] transition-colors cursor-pointer"
+                        >
+                          + {preset.label}
+                        </button>
                       ))}
                     </div>
+
+                    {(() => {
+                      const editableLinks = getEditableSocialLinks(settingsForm);
+                      if (editableLinks.length === 0) {
+                        return (
+                          <div className="p-4 rounded-xl bg-[#FAFAFA] border border-dashed border-[#D4D4D8] text-xs text-[#52525B] text-center">
+                            No social networks added yet. Click &ldquo;Add Social Network&rdquo; above to add one.
+                          </div>
+                        );
+                      }
+                      return (
+                        <div className="space-y-3">
+                          {editableLinks.map((item, idx) => (
+                            <div
+                              key={item.id}
+                              className="p-4 rounded-xl bg-[#FAFAFA] border border-[#E4E4E7] space-y-3"
+                            >
+                              <div className="flex items-center justify-between gap-2">
+                                <span className="text-[11px] font-semibold uppercase tracking-wider text-[#71717A]">
+                                  Network #{idx + 1}
+                                </span>
+                                <button
+                                  type="button"
+                                  onClick={() => handleRemoveSocialLink(item.id)}
+                                  className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-xs font-medium text-[#991B1B] border border-[#FECACA] bg-[#FEF2F2] hover:bg-[#FEE2E2] cursor-pointer"
+                                >
+                                  <Trash2 className="w-3.5 h-3.5" />
+                                  <span>Remove</span>
+                                </button>
+                              </div>
+
+                              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                                <div>
+                                  <label className="block text-xs font-semibold text-[#52525B] mb-1">
+                                    Network Name *
+                                  </label>
+                                  <input
+                                    type="text"
+                                    required
+                                    maxLength={VALIDATION_LIMITS.settings.socialNameMax}
+                                    value={item.name}
+                                    onChange={(e) =>
+                                      handleUpdateSocialLink(item.id, {
+                                        name: e.target.value,
+                                      })
+                                    }
+                                    placeholder="e.g., YouTube Channel"
+                                    className="w-full px-3 py-2 rounded-lg text-sm bg-white border border-[#E4E4E7]"
+                                  />
+                                </div>
+                                <div>
+                                  <label className="block text-xs font-semibold text-[#52525B] mb-1">
+                                    Profile or Channel URL *
+                                  </label>
+                                  <input
+                                    type="text"
+                                    required
+                                    maxLength={VALIDATION_LIMITS.settings.socialUrlMax}
+                                    value={item.url}
+                                    onChange={(e) =>
+                                      handleUpdateSocialLink(item.id, {
+                                        url: e.target.value,
+                                      })
+                                    }
+                                    placeholder="https://..."
+                                    className="w-full px-3 py-2 rounded-lg text-sm bg-white border border-[#E4E4E7]"
+                                  />
+                                </div>
+                              </div>
+
+                              <div>
+                                <label className="block text-xs font-semibold text-[#52525B] mb-1">
+                                  Short Description (Optional)
+                                </label>
+                                <input
+                                  type="text"
+                                  maxLength={VALIDATION_LIMITS.settings.socialSubtitleMax}
+                                  value={item.subtitle}
+                                  onChange={(e) =>
+                                    handleUpdateSocialLink(item.id, {
+                                      subtitle: e.target.value,
+                                    })
+                                  }
+                                  placeholder="e.g., Short video sermons & live teachings"
+                                  className="w-full px-3 py-2 rounded-lg text-sm bg-white border border-[#E4E4E7]"
+                                />
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      );
+                    })()}
                   </div>
 
                   <button
