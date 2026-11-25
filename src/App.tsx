@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { User, onAuthStateChanged } from 'firebase/auth';
 import {
   collection,
@@ -24,6 +24,7 @@ import {
   db,
   handleFirestoreError,
 } from './firebase';
+import { fetchNeonBootstrap, postNeonAction } from './lib/neonClient';
 import {
   FaithArticle,
   MinistryProgram,
@@ -82,6 +83,7 @@ function EvangelistShepherdApp() {
   const [currentPage, setCurrentPage] = useState<PageRoute>(() => parseHashRoute());
   const [user, setUser] = useState<User | null>(null);
   const [authReady, setAuthReady] = useState(false);
+  const [dbMode, setDbMode] = useState<'checking' | 'neon' | 'firestore'>('checking');
 
   const [firestoreSermons, setFirestoreSermons] = useState<Sermon[]>([]);
   const [sermonsLoaded, setSermonsLoaded] = useState(false);
@@ -158,7 +160,71 @@ function EvangelistShepherdApp() {
     return () => unsubscribe();
   }, []);
 
+  const applyNeonSnapshot = useCallback(
+    (data: Awaited<ReturnType<typeof fetchNeonBootstrap>>) => {
+      if (!data.enabled) return;
+      if (data.settings) setSettings(data.settings);
+      if (Array.isArray(data.sermons)) {
+        const sortedSermons = [...data.sermons].sort(
+          (a, b) => getTimestampMillis(b.createdAt) - getTimestampMillis(a.createdAt)
+        );
+        setFirestoreSermons(sortedSermons);
+        setSermonsLoaded(true);
+      }
+      if (Array.isArray(data.articles)) {
+        const sortedArticles = [...data.articles].sort(
+          (a, b) => getTimestampMillis(b.createdAt) - getTimestampMillis(a.createdAt)
+        );
+        setFirestoreArticles(sortedArticles);
+        setArticlesLoaded(true);
+      }
+      if (Array.isArray(data.programs)) {
+        const sortedPrograms = [...data.programs].sort(
+          (a, b) => a.orderIndex - b.orderIndex
+        );
+        setFirestorePrograms(sortedPrograms);
+        setProgramsLoaded(true);
+      }
+      if (data.engagementMetrics) {
+        setEngagementMetrics(data.engagementMetrics);
+      }
+    },
+    []
+  );
+
+  const syncNeonData = useCallback(async () => {
+    const data = await fetchNeonBootstrap(isAdmin ? user : null);
+    if (data.enabled) {
+      applyNeonSnapshot(data);
+    }
+    return data.enabled;
+  }, [applyNeonSnapshot, isAdmin, user]);
+
   useEffect(() => {
+    if (!authReady) return;
+    let cancelled = false;
+    const initBackend = async () => {
+      const enabled = await syncNeonData();
+      if (!cancelled) {
+        setDbMode(enabled ? 'neon' : 'firestore');
+      }
+    };
+    void initBackend();
+    return () => {
+      cancelled = true;
+    };
+  }, [authReady, syncNeonData]);
+
+  useEffect(() => {
+    if (dbMode !== 'neon') return;
+    const interval = window.setInterval(() => {
+      void syncNeonData();
+    }, 8000);
+    return () => window.clearInterval(interval);
+  }, [dbMode, syncNeonData]);
+
+  useEffect(() => {
+    if (dbMode !== 'firestore') return;
     const path = 'ministry_settings/main';
     const unsubscribe = onSnapshot(
       doc(db, 'ministry_settings', 'main'),
@@ -217,10 +283,10 @@ function EvangelistShepherdApp() {
       }
     );
     return () => unsubscribe();
-  }, []);
+  }, [dbMode]);
 
   useEffect(() => {
-    if (!authReady) return;
+    if (!authReady || dbMode !== 'firestore') return;
     const path = 'sermons';
     const q = isAdmin
       ? query(collection(db, path))
@@ -265,10 +331,10 @@ function EvangelistShepherdApp() {
       }
     );
     return () => unsubscribe();
-  }, [authReady, isAdmin]);
+  }, [authReady, isAdmin, dbMode]);
 
   useEffect(() => {
-    if (!authReady) return;
+    if (!authReady || dbMode !== 'firestore') return;
     const path = 'faith_articles';
     const q = isAdmin
       ? query(collection(db, path))
@@ -308,10 +374,10 @@ function EvangelistShepherdApp() {
       }
     );
     return () => unsubscribe();
-  }, [authReady, isAdmin]);
+  }, [authReady, isAdmin, dbMode]);
 
   useEffect(() => {
-    if (!authReady) return;
+    if (!authReady || dbMode !== 'firestore') return;
     const path = 'programs';
     const q = isAdmin
       ? query(collection(db, path))
@@ -345,9 +411,10 @@ function EvangelistShepherdApp() {
       }
     );
     return () => unsubscribe();
-  }, [authReady, isAdmin]);
+  }, [authReady, isAdmin, dbMode]);
 
   useEffect(() => {
+    if (dbMode !== 'firestore') return;
     const path = 'engagement_metrics';
     const unsubscribe = onSnapshot(
       collection(db, path),
@@ -369,7 +436,7 @@ function EvangelistShepherdApp() {
       }
     );
     return () => unsubscribe();
-  }, []);
+  }, [dbMode]);
 
   const publishedPosts: Sermon[] = useMemo(() => {
     if (firestoreSermons.length > 0) {
@@ -387,8 +454,8 @@ function EvangelistShepherdApp() {
         loveCount: s.loveCount + (offsets?.loveCount || 0),
         viewCount: s.viewCount + (offsets?.viewCount || 0),
         authorId: 'evangelist-shepherd',
-        createdAt: new Date(2026, 10, 22 - idx * 3),
-        updatedAt: new Date(2026, 10, 22 - idx * 3),
+        createdAt: new Date(Date.now() - idx * 86_400_000),
+        updatedAt: new Date(Date.now() - idx * 86_400_000),
       };
     });
   }, [
@@ -429,8 +496,8 @@ function EvangelistShepherdApp() {
         id,
         viewCount: a.viewCount + (offsets?.viewCount || 0),
         authorId: 'evangelist-shepherd',
-        createdAt: new Date(2026, 10, 20 - idx * 4),
-        updatedAt: new Date(2026, 10, 20 - idx * 4),
+        createdAt: new Date(Date.now() - idx * 86_400_000),
+        updatedAt: new Date(Date.now() - idx * 86_400_000),
       };
     });
   }, [
@@ -449,8 +516,8 @@ function EvangelistShepherdApp() {
       ...p,
       id: `starter-program-${idx}`,
       authorId: 'evangelist-shepherd',
-      createdAt: new Date(2026, 10, 15),
-      updatedAt: new Date(2026, 10, 15),
+      createdAt: new Date(Date.now() - idx * 86_400_000),
+      updatedAt: new Date(Date.now() - idx * 86_400_000),
     }));
   }, [firestorePrograms, programsLoaded, settings.hideDemoPrograms]);
 
@@ -501,6 +568,25 @@ function EvangelistShepherdApp() {
 
   const recordSermonView = async (sermon: Sermon) => {
     if (!markViewedInSession(`sermon:${sermon.id}`)) return;
+    if (dbMode === 'neon') {
+      setFirestoreSermons((prev) =>
+        prev.map((item) =>
+          item.id === sermon.id
+            ? { ...item, viewCount: (item.viewCount || 0) + 1 }
+            : item
+        )
+      );
+      try {
+        await postNeonAction('increment_metric', {
+          targetType: 'sermon',
+          id: sermon.id,
+          field: 'viewCount',
+        });
+      } catch {
+        // Ignore transient view sync failure
+      }
+      return;
+    }
     if (sermon.id.startsWith('starter-')) {
       await incrementStarterMetric(sermon.id, 'viewCount');
       return;
@@ -517,6 +603,25 @@ function EvangelistShepherdApp() {
 
   const recordArticleView = async (article: FaithArticle) => {
     if (!markViewedInSession(`article:${article.id}`)) return;
+    if (dbMode === 'neon') {
+      setFirestoreArticles((prev) =>
+        prev.map((item) =>
+          item.id === article.id
+            ? { ...item, viewCount: (item.viewCount || 0) + 1 }
+            : item
+        )
+      );
+      try {
+        await postNeonAction('increment_metric', {
+          targetType: 'article',
+          id: article.id,
+          field: 'viewCount',
+        });
+      } catch {
+        // Ignore transient view sync failure
+      }
+      return;
+    }
     if (article.id.startsWith('starter-')) {
       await incrementStarterMetric(article.id, 'viewCount');
       return;
@@ -551,6 +656,26 @@ function EvangelistShepherdApp() {
       localStorage.setItem(REACTIONS_STORAGE_KEY, JSON.stringify(nextReacted));
     } catch {
       // ignore storage quota errors
+    }
+
+    if (dbMode === 'neon') {
+      setFirestoreSermons((prev) =>
+        prev.map((item) =>
+          item.id === post.id
+            ? { ...item, [reaction]: (item[reaction] || 0) + 1 }
+            : item
+        )
+      );
+      try {
+        await postNeonAction('increment_metric', {
+          targetType: 'sermon',
+          id: post.id,
+          field: reaction,
+        });
+      } catch {
+        // Ignore transient reaction sync failure
+      }
+      return;
     }
 
     if (post.id.startsWith('starter-')) {
@@ -666,6 +791,7 @@ function EvangelistShepherdApp() {
           <ContactPage
             settings={settings}
             isAdmin={isAdmin}
+            useNeonDb={dbMode === 'neon'}
             defaultSubject={contactDefaultSubject}
             defaultType={contactDefaultType}
             onOpenStudioSocial={() => openStudio('social')}
@@ -762,6 +888,8 @@ function EvangelistShepherdApp() {
         onClose={() => setStudioOpen(false)}
         user={user}
         isAdmin={isAdmin}
+        useNeonDb={dbMode === 'neon'}
+        onNeonDataChanged={() => void syncNeonData()}
         sermons={firestoreSermons.length > 0 ? firestoreSermons : publishedPosts}
         hasFirestoreSermons={firestoreSermons.length > 0}
         articles={firestoreArticles.length > 0 ? firestoreArticles : publishedArticles}

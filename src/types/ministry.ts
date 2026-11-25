@@ -253,9 +253,16 @@ export function generateDocumentId(prefix: string): string {
   return `${cleanPrefix}_${Date.now()}_${rand}`.slice(0, 128);
 }
 
-export function formatDateValue(value: Timestamp | Date | null | undefined): string {
+export function formatDateValue(
+  value: Timestamp | Date | string | number | null | undefined
+): string {
   if (!value) return 'Recent';
-  const date = value instanceof Timestamp ? value.toDate() : value;
+  const date =
+    value instanceof Timestamp
+      ? value.toDate()
+      : value instanceof Date
+      ? value
+      : new Date(value);
   if (!(date instanceof Date) || Number.isNaN(date.getTime())) return 'Recent';
   return date.toLocaleDateString('en-US', {
     month: 'short',
@@ -264,9 +271,12 @@ export function formatDateValue(value: Timestamp | Date | null | undefined): str
   });
 }
 
-export function getTimestampMillis(value: Timestamp | Date | null | undefined): number {
+export function getTimestampMillis(
+  value: Timestamp | Date | string | number | null | undefined
+): number {
   if (!value) return 0;
   if (value instanceof Timestamp) return value.toMillis();
   if (value instanceof Date) return value.getTime();
-  return 0;
+  const parsed = new Date(value).getTime();
+  return Number.isNaN(parsed) ? 0 : parsed;
 }

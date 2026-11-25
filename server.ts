@@ -5,90 +5,13 @@ import { fileURLToPath } from 'node:url';
 import dotenv from 'dotenv';
 import express from 'express';
 import { createServer as createViteServer } from 'vite';
+import { verifyFirebaseAdminToken } from './lib/firebaseAuthVerify.ts';
+import { handleNeonApiRequest } from './lib/neonBackend.ts';
 
 dotenv.config();
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PORT = 3000;
-
-// Session signing key from env or ephemeral in-memory 256-bit key
-const SESSION_SECRET =
-  process.env.ADMIN_SESSION_SECRET && process.env.ADMIN_SESSION_SECRET.length >= 16
-    ? process.env.ADMIN_SESSION_SECRET
-    : crypto.randomBytes(32).toString('hex');
-
-interface StoredCredential {
-  username: string;
-  salt: string;
-  hash: string;
-}
-
-let claimedCredential: StoredCredential | null = null;
-const revokedTokens = new Set<string>();
-
-function hashPassword(password: string, salt: string): string {
-  return crypto.scryptSync(password, salt, 64).toString('hex');
-}
-
-function safeEqualString(a: string, b: string): boolean {
-  const bufA = Buffer.from(a, 'utf8');
-  const bufB = Buffer.from(b, 'utf8');
-  if (bufA.length !== bufB.length) {
-    crypto.timingSafeEqual(bufA, bufA);
-    return false;
-  }
-  return crypto.timingSafeEqual(bufA, bufB);
-}
-
-function signSessionToken(username: string): string {
-  const payload = Buffer.from(
-    JSON.stringify({
-      sub: username,
-      jti: crypto.randomBytes(12).toString('hex'),
-      exp: Date.now() + 12 * 60 * 60 * 1000,
-    }),
-    'utf8'
-  ).toString('base64url');
-  const sig = crypto
-    .createHmac('sha256', SESSION_SECRET)
-    .update(payload)
-    .digest('base64url');
-  return `${payload}.${sig}`;
-}
-
-function verifySessionToken(authHeader: string | undefined): { username: string } | null {
-  if (!authHeader || !authHeader.startsWith('Bearer ')) return null;
-  const token = authHeader.slice(7).trim();
-  if (!token || revokedTokens.has(token)) return null;
-  const parts = token.split('.');
-  if (parts.length !== 2) return null;
-  const [payloadB64, sigB64] = parts;
-  const expectedSig = crypto
-    .createHmac('sha256', SESSION_SECRET)
-    .update(payloadB64)
-    .digest('base64url');
-  if (!safeEqualString(sigB64, expectedSig)) return null;
-
-  try {
-    const parsed = JSON.parse(Buffer.from(payloadB64, 'base64url').toString('utf8'));
-    if (!parsed || typeof parsed.sub !== 'string' || typeof parsed.exp !== 'number') {
-      return null;
-    }
-    if (Date.now() > parsed.exp) return null;
-    return { username: parsed.sub };
-  } catch {
-    return null;
-  }
-}
-
-function isEnvConfigured(): boolean {
-  return Boolean(
-    process.env.ADMIN_USERNAME &&
-      process.env.ADMIN_USERNAME.trim().length > 0 &&
-      process.env.ADMIN_PASSWORD &&
-      process.env.ADMIN_PASSWORD.trim().length > 0
-  );
-}
 
 function verifyImageMagicBytes(buf: Buffer, ext: string): boolean {
   if (buf.length < 12) return false;
@@ -140,94 +63,24 @@ async function startServer() {
     })
   );
 
-  const smallJson = express.json({ limit: '32kb' });
-  app.use((req, res, next) => {
-    if (req.path === '/api/admin/upload-image') {
-      next();
-      return;
-    }
-    smallJson(req, res, next);
+  const neonJson = express.json({ limit: '512kb' });
+  app.all('/api/neondb', neonJson, async (req, res) => {
+    await handleNeonApiRequest(
+      {
+        method: req.method,
+        query: req.query as Record<string, string | string[] | undefined>,
+        url: req.url,
+        headers: req.headers,
+        body: req.body,
+      },
+      res
+    );
   });
 
-  app.get('/api/admin/status', (req, res) => {
-    const configured = isEnvConfigured() || claimedCredential !== null;
-    const session = verifySessionToken(req.headers.authorization);
-    res.json({
-      configured,
-      authenticated: Boolean(session),
-      username: session?.username || null,
-    });
-  });
-
-  app.post('/api/admin/setup', (req, res) => {
-    if (isEnvConfigured() || claimedCredential !== null) {
-      res.status(409).json({ error: 'Admin credentials are already configured.' });
-      return;
-    }
-    const rawUser = typeof req.body?.username === 'string' ? req.body.username.trim() : '';
-    const rawPass = typeof req.body?.password === 'string' ? req.body.password : '';
-    if (rawUser.length < 3 || rawUser.length > 64 || rawPass.length < 4 || rawPass.length > 128) {
-      res.status(400).json({ error: 'Account name (3-64 chars) and password (4-128 chars) are required.' });
-      return;
-    }
-    const salt = crypto.randomBytes(16).toString('hex');
-    const hash = hashPassword(rawPass, salt);
-    claimedCredential = { username: rawUser, salt, hash };
-    const token = signSessionToken(rawUser);
-    res.json({ token, username: rawUser });
-  });
-
-  app.post('/api/admin/login', (req, res) => {
-    const rawUser = typeof req.body?.username === 'string' ? req.body.username.trim() : '';
-    const rawPass = typeof req.body?.password === 'string' ? req.body.password : '';
-    if (!rawUser || !rawPass) {
-      res.status(400).json({ error: 'Account name and password are required.' });
-      return;
-    }
-
-    if (isEnvConfigured()) {
-      const envUser = process.env.ADMIN_USERNAME!.trim();
-      const envPass = process.env.ADMIN_PASSWORD!;
-      const userOk = safeEqualString(rawUser, envUser);
-      const passOk = safeEqualString(rawPass, envPass);
-      if (!userOk || !passOk) {
-        res.status(401).json({ error: 'Invalid account name or password.' });
-        return;
-      }
-      const token = signSessionToken(envUser);
-      res.json({ token, username: envUser });
-      return;
-    }
-
-    if (!claimedCredential) {
-      res.status(403).json({ error: 'Admin account has not been initialized yet.' });
-      return;
-    }
-
-    const userOk = safeEqualString(rawUser, claimedCredential.username);
-    const candidateHash = hashPassword(rawPass, claimedCredential.salt);
-    const passOk = safeEqualString(candidateHash, claimedCredential.hash);
-    if (!userOk || !passOk) {
-      res.status(401).json({ error: 'Invalid account name or password.' });
-      return;
-    }
-
-    const token = signSessionToken(claimedCredential.username);
-    res.json({ token, username: claimedCredential.username });
-  });
-
-  app.post('/api/admin/logout', (req, res) => {
-    const authHeader = req.headers.authorization;
-    if (authHeader && authHeader.startsWith('Bearer ')) {
-      revokedTokens.add(authHeader.slice(7).trim());
-    }
-    res.json({ ok: true });
-  });
-
-  app.post('/api/admin/upload-image', express.json({ limit: '6mb' }), (req, res) => {
-    const session = verifySessionToken(req.headers.authorization);
-    if (!session) {
-      res.status(401).json({ error: 'Admin authentication required to upload images.' });
+  app.post('/api/admin/upload-image', express.json({ limit: '6mb' }), async (req, res) => {
+    const adminSession = await verifyFirebaseAdminToken(req.headers.authorization);
+    if (!adminSession) {
+      res.status(401).json({ error: 'Authorized Firebase admin sign-in is required to upload images.' });
       return;
     }
 

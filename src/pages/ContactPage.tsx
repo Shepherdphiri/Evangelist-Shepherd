@@ -5,6 +5,7 @@ import { SocialPortalsSection } from '../components/SocialPortalsSection';
 interface ContactPageProps {
   settings: MinistrySettings;
   isAdmin: boolean;
+  useNeonDb?: boolean;
   defaultSubject?: string;
   defaultType?: PrayerRequestType;
   onOpenStudioSocial: () => void;
@@ -13,6 +14,7 @@ interface ContactPageProps {
 export function ContactPage({
   settings,
   isAdmin,
+  useNeonDb = false,
   defaultSubject,
   defaultType,
   onOpenStudioSocial,
@@ -22,6 +24,7 @@ export function ContactPage({
       <PrayerContactSection
         defaultSubject={defaultSubject}
         defaultType={defaultType}
+        useNeonDb={useNeonDb}
       />
       <SocialPortalsSection
         settings={settings}

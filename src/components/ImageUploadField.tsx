@@ -1,5 +1,8 @@
 import React, { useId, useState } from 'react';
+import { User } from 'firebase/auth';
+import { getDownloadURL, ref, uploadBytes } from 'firebase/storage';
 import { Image as ImageIcon, Loader2, Trash2, Upload } from 'lucide-react';
+import { storage } from '../firebase';
 import { ResilientImage } from './ResilientImage';
 
 interface ImagePreset {
@@ -11,7 +14,7 @@ interface ImageUploadFieldProps {
   label: string;
   value: string;
   onChange: (nextUrl: string) => void;
-  studioToken: string | null;
+  user: User | null;
   presets?: ImagePreset[];
   helperText?: string;
 }
@@ -68,11 +71,23 @@ function compressImageIfLarge(dataUrl: string, fileType: string): Promise<string
   });
 }
 
+function dataUrlToBlob(dataUrl: string): Blob {
+  const [header, base64Data] = dataUrl.split(',');
+  const mimeMatch = header.match(/data:([^;]+);base64/);
+  const mimeType = mimeMatch ? mimeMatch[1] : 'image/jpeg';
+  const binary = atob(base64Data);
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i += 1) {
+    bytes[i] = binary.charCodeAt(i);
+  }
+  return new Blob([bytes], { type: mimeType });
+}
+
 export function ImageUploadField({
   label,
   value,
   onChange,
-  studioToken,
+  user,
   presets,
   helperText,
 }: ImageUploadFieldProps) {
@@ -92,8 +107,8 @@ export function ImageUploadField({
       return;
     }
 
-    if (!studioToken) {
-      setUploadError('Admin studio session required to upload images.');
+    if (!user) {
+      setUploadError('Please sign in as admin to upload images.');
       return;
     }
 
@@ -101,15 +116,51 @@ export function ImageUploadField({
     try {
       const rawDataUrl = await readFileAsDataUrl(file);
       const preparedDataUrl = await compressImageIfLarge(rawDataUrl, file.type);
+      const blob = dataUrlToBlob(preparedDataUrl);
+      const ext =
+        blob.type === 'image/png'
+          ? 'png'
+          : blob.type === 'image/webp'
+          ? 'webp'
+          : blob.type === 'image/gif'
+          ? 'gif'
+          : 'jpg';
 
+      // Primary: upload directly to Firebase Storage so images sync across Vercel & all servers
+      try {
+        const safeBaseName = file.name
+          .replace(/\.[^/.]+$/, '')
+          .replace(/[^a-zA-Z0-9_-]/g, '_')
+          .slice(0, 32) || 'image';
+        const storageRef = ref(
+          storage,
+          `ministry_uploads/${Date.now()}_${safeBaseName}.${ext}`
+        );
+        await uploadBytes(storageRef, blob, { contentType: blob.type });
+        const downloadUrl = await getDownloadURL(storageRef);
+        onChange(downloadUrl);
+        setUploadedName(file.name);
+        return;
+      } catch {
+        // Fallback: use server upload endpoint if Firebase Storage rules are not enabled yet
+      }
+
+      const idToken = await user.getIdToken();
       const res = await fetch('/api/admin/upload-image', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          Authorization: `Bearer ${studioToken}`,
+          Authorization: `Bearer ${idToken}`,
         },
         body: JSON.stringify({ dataUrl: preparedDataUrl }),
       });
+
+      const contentType = res.headers.get('content-type') || '';
+      if (!contentType.includes('application/json')) {
+        throw new Error(
+          'Image upload requires Firebase Storage permissions on static hosting, or select Starter Artwork.'
+        );
+      }
 
       const data = (await res.json().catch(() => ({}))) as {
         url?: string;
@@ -131,7 +182,10 @@ export function ImageUploadField({
     }
   };
 
-  const isUploadedFile = value.startsWith('/uploads/');
+  const isUploadedFile =
+    value.startsWith('/uploads/') ||
+    value.includes('firebasestorage.googleapis.com') ||
+    value.includes('storage.googleapis.com');
   const matchedPreset = presets?.find((p) => p.path === value);
 
   return (

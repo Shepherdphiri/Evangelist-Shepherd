@@ -8,6 +8,7 @@ import {
   generateDocumentId,
   truncateText,
 } from '../types/ministry';
+import { postNeonAction } from '../lib/neonClient';
 import { ABSTRACT_ART_PATH } from '../data/defaultMinistryData';
 import { ResilientImage } from './ResilientImage';
 
@@ -21,11 +22,13 @@ const REQUEST_TYPES: PrayerRequestType[] = [
 interface PrayerContactSectionProps {
   defaultSubject?: string;
   defaultType?: PrayerRequestType;
+  useNeonDb?: boolean;
 }
 
 export function PrayerContactSection({
   defaultSubject = '',
   defaultType = 'Prayer Request',
+  useNeonDb = false,
 }: PrayerContactSectionProps) {
   const [requestType, setRequestType] = useState<PrayerRequestType>(defaultType);
   const [senderName, setSenderName] = useState('');
@@ -79,19 +82,31 @@ export function PrayerContactSection({
     const path = `prayer_requests/${docId}`;
 
     try {
-      await setDoc(doc(db, 'prayer_requests', docId), {
-        senderName: cleanName,
-        senderEmail: cleanEmail,
-        senderPhone: cleanPhone,
-        requestType,
-        subject: cleanSubject,
-        message: cleanMessage,
-        isPrivate,
-        status: 'unread',
-        adminNote: '',
-        createdAt: serverTimestamp(),
-        updatedAt: serverTimestamp(),
-      });
+      if (useNeonDb) {
+        await postNeonAction('create_prayer_request', {
+          senderName: cleanName,
+          senderEmail: cleanEmail,
+          senderPhone: cleanPhone,
+          requestType,
+          subject: cleanSubject,
+          message: cleanMessage,
+          isPrivate,
+        });
+      } else {
+        await setDoc(doc(db, 'prayer_requests', docId), {
+          senderName: cleanName,
+          senderEmail: cleanEmail,
+          senderPhone: cleanPhone,
+          requestType,
+          subject: cleanSubject,
+          message: cleanMessage,
+          isPrivate,
+          status: 'unread',
+          adminNote: '',
+          createdAt: serverTimestamp(),
+          updatedAt: serverTimestamp(),
+        });
+      }
 
       setSubmittedReceipt({ name: cleanName, type: requestType });
       setSenderName('');
@@ -101,6 +116,7 @@ export function PrayerContactSection({
       setMessage('');
     } catch (error) {
       if (
+        !useNeonDb &&
         error instanceof Error &&
         error.message.toLowerCase().includes('permission')
       ) {

@@ -4,6 +4,7 @@ import {
   collection,
   deleteDoc,
   doc,
+  getDocs,
   onSnapshot,
   serverTimestamp,
   setDoc,
@@ -52,10 +53,12 @@ import {
 } from '../types/ministry';
 import {
   COVER_IMAGE_PRESETS,
+  DEFAULT_MINISTRY_SETTINGS,
   STARTER_FAITH_ARTICLES,
   STARTER_PROGRAMS,
   STARTER_SERMONS,
 } from '../data/defaultMinistryData';
+import { fetchNeonInbox, postNeonAction } from '../lib/neonClient';
 import { ImageUploadField } from './ImageUploadField';
 
 export type StudioTab = 'sermons' | 'blog' | 'programs' | 'inbox' | 'social';
@@ -66,6 +69,8 @@ interface MinistryStudioModalProps {
   onClose: () => void;
   user: User | null;
   isAdmin: boolean;
+  useNeonDb?: boolean;
+  onNeonDataChanged?: () => void;
   sermons: Sermon[];
   hasFirestoreSermons: boolean;
   articles: FaithArticle[];
@@ -81,6 +86,8 @@ export function MinistryStudioModal({
   onClose,
   user,
   isAdmin,
+  useNeonDb = false,
+  onNeonDataChanged,
   sermons,
   hasFirestoreSermons,
   articles,
@@ -92,14 +99,8 @@ export function MinistryStudioModal({
   const [activeTab, setActiveTab] = useState<StudioTab>(initialTab);
   const [authError, setAuthError] = useState('');
   const [signingIn, setSigningIn] = useState(false);
-
-  // Server-side Account/Password Admin Gate (token kept strictly in React memory)
-  const [studioToken, setStudioToken] = useState<string | null>(null);
-  const [serverConfigured, setServerConfigured] = useState<boolean | null>(null);
-  const [accountName, setAccountName] = useState('');
-  const [accountPassword, setAccountPassword] = useState('');
-  const [gateSubmitting, setGateSubmitting] = useState(false);
-  const [gateError, setGateError] = useState('');
+  const [confirmReplaceAll, setConfirmReplaceAll] = useState(false);
+  const [replacingAll, setReplacingAll] = useState(false);
 
   // Sermons & Midweek Videos editor (videos only)
   const [editingSermonId, setEditingSermonId] = useState<string | null>(null);
@@ -184,48 +185,31 @@ export function MinistryStudioModal({
   }, [settings]);
 
   useEffect(() => {
-    if (!isOpen) return;
-    let cancelled = false;
-    setGateError('');
-
-    const checkStatus = async () => {
-      try {
-        const res = await fetch('/api/admin/status', {
-          headers: studioToken
-            ? { Authorization: `Bearer ${studioToken}` }
-            : undefined,
-        });
-        if (!res.ok) {
-          throw new Error('Admin verification service is unavailable.');
-        }
-        const data = (await res.json()) as {
-          configured?: boolean;
-          authenticated?: boolean;
-        };
-        if (cancelled) return;
-        setServerConfigured(Boolean(data.configured));
-        if (studioToken && !data.authenticated) {
-          setStudioToken(null);
-        }
-      } catch {
-        if (!cancelled) {
-          setGateError(
-            'Unable to reach the admin authentication service. Please refresh or try again.'
-          );
-        }
-      }
-    };
-
-    void checkStatus();
-    return () => {
-      cancelled = true;
-    };
-  }, [isOpen, studioToken]);
-
-  useEffect(() => {
-    if (!isOpen || !isAdmin) {
+    if (!isOpen || !isAdmin || !user) {
       setPrayerRequests([]);
       return;
+    }
+
+    if (useNeonDb) {
+      let cancelled = false;
+      const loadNeonInbox = async () => {
+        try {
+          const items = await fetchNeonInbox(user);
+          if (!cancelled) {
+            setPrayerRequests(items);
+          }
+        } catch {
+          // Ignore transient inbox polling failure
+        }
+      };
+      void loadNeonInbox();
+      const timer = window.setInterval(() => {
+        void loadNeonInbox();
+      }, 10000);
+      return () => {
+        cancelled = true;
+        window.clearInterval(timer);
+      };
     }
 
     const path = 'prayer_requests';
@@ -260,64 +244,12 @@ export function MinistryStudioModal({
     );
 
     return () => unsubscribe();
-  }, [isOpen, isAdmin]);
+  }, [isOpen, isAdmin, useNeonDb, user]);
 
   if (!isOpen) return null;
 
-  const handleGateSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setGateError('');
-    const trimmedUser = accountName.trim();
-    if (!trimmedUser || !accountPassword) {
-      setGateError('Please enter both your account name and password.');
-      return;
-    }
-
-    setGateSubmitting(true);
-    try {
-      const endpoint =
-        serverConfigured === false ? '/api/admin/setup' : '/api/admin/login';
-      const res = await fetch(endpoint, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          username: trimmedUser,
-          password: accountPassword,
-        }),
-      });
-      const data = (await res.json().catch(() => ({}))) as {
-        token?: string;
-        error?: string;
-      };
-      if (!res.ok || !data.token) {
-        setGateError(data.error || 'Authentication failed. Check your credentials.');
-        return;
-      }
-      setStudioToken(data.token);
-      setServerConfigured(true);
-      setAccountPassword('');
-    } catch {
-      setGateError('Network error while verifying admin credentials.');
-    } finally {
-      setGateSubmitting(false);
-    }
-  };
-
   const handleSignOut = async () => {
-    const tokenToRevoke = studioToken;
-    setStudioToken(null);
-    setAccountPassword('');
-    setGateError('');
-    if (tokenToRevoke) {
-      try {
-        await fetch('/api/admin/logout', {
-          method: 'POST',
-          headers: { Authorization: `Bearer ${tokenToRevoke}` },
-        });
-      } catch {
-        // Ignore network error during logout cleanup
-      }
-    }
+    setAuthError('');
     if (user) {
       await signOut(auth);
     }
@@ -329,11 +261,32 @@ export function MinistryStudioModal({
     try {
       await signInWithPopup(auth, googleProvider);
     } catch (err) {
-      setAuthError(
-        err instanceof Error
-          ? err.message
-          : 'Google sign-in was cancelled or blocked.'
-      );
+      const code =
+        err && typeof err === 'object' && 'code' in err
+          ? String((err as { code?: unknown }).code)
+          : '';
+      if (code === 'auth/unauthorized-domain') {
+        const host =
+          typeof window !== 'undefined' ? window.location.hostname : 'this domain';
+        setAuthError(
+          `Domain "${host}" is not authorized in Firebase Authentication yet. Add "${host}" in Firebase Console → Authentication → Settings → Authorized domains.`
+        );
+      } else if (code === 'auth/popup-blocked') {
+        setAuthError(
+          'Sign-in pop-up was blocked by your browser. Please allow pop-ups for this site and try again.'
+        );
+      } else if (
+        code === 'auth/popup-closed-by-user' ||
+        code === 'auth/cancelled-popup-request'
+      ) {
+        setAuthError('Google sign-in was cancelled. Click the button to try again.');
+      } else {
+        setAuthError(
+          err instanceof Error
+            ? err.message
+            : 'Google sign-in failed. Please try again.'
+        );
+      }
     } finally {
       setSigningIn(false);
     }
@@ -449,10 +402,101 @@ export function MinistryStudioModal({
       [key]: value,
     };
     setSettingsForm(nextSettings);
+    if (useNeonDb) {
+      await postNeonAction('save_settings', nextSettings as unknown as Record<string, unknown>, user);
+      onNeonDataChanged?.();
+      return;
+    }
     await setDoc(
       doc(db, 'ministry_settings', 'main'),
       buildSettingsPayload(nextSettings, user.uid)
     );
+  };
+
+  const handleReplaceAllOldData = async () => {
+    if (!user || !isAdmin) return;
+    setReplacingAll(true);
+    setConfirmReplaceAll(false);
+    setSermonFeedback('');
+    setEncFeedback('');
+    setArticleFeedback('');
+    setProgramFeedback('');
+
+    try {
+      if (useNeonDb) {
+        await postNeonAction('replace_all_data', {}, user);
+        onNeonDataChanged?.();
+      } else {
+        const collectionsToClear = ['sermons', 'faith_articles', 'programs', 'engagement_metrics'] as const;
+        for (const colName of collectionsToClear) {
+          const snap = await getDocs(collection(db, colName));
+          for (const d of snap.docs) {
+            await deleteDoc(doc(db, colName, d.id));
+          }
+        }
+
+        for (const starter of STARTER_SERMONS) {
+          await setDoc(doc(db, 'sermons', generateDocumentId('sermon')), {
+            ...starter,
+            authorId: user.uid,
+            createdAt: serverTimestamp(),
+            updatedAt: serverTimestamp(),
+          });
+        }
+
+        for (const starter of STARTER_FAITH_ARTICLES) {
+          await setDoc(doc(db, 'faith_articles', generateDocumentId('faith')), {
+            ...starter,
+            authorId: user.uid,
+            createdAt: serverTimestamp(),
+            updatedAt: serverTimestamp(),
+          });
+        }
+
+        for (const starter of STARTER_PROGRAMS) {
+          await setDoc(doc(db, 'programs', generateDocumentId('prog')), {
+            ...starter,
+            authorId: user.uid,
+            createdAt: serverTimestamp(),
+            updatedAt: serverTimestamp(),
+          });
+        }
+
+        const refreshedSettings: MinistrySettings = {
+          ...DEFAULT_MINISTRY_SETTINGS,
+          youtubeUrl: settingsForm.youtubeUrl,
+          facebookUrl: settingsForm.facebookUrl,
+          instagramUrl: settingsForm.instagramUrl,
+          tiktokUrl: settingsForm.tiktokUrl,
+          xUrl: settingsForm.xUrl,
+          whatsappUrl: settingsForm.whatsappUrl,
+          podcastUrl: settingsForm.podcastUrl,
+          hideDemoSermons: true,
+          hideDemoArticles: true,
+          hideDemoPrograms: true,
+        };
+        setSettingsForm(refreshedSettings);
+        await setDoc(
+          doc(db, 'ministry_settings', 'main'),
+          buildSettingsPayload(refreshedSettings, user.uid)
+        );
+      }
+
+      setSermonFeedback('All old data replaced with the fresh content set.');
+      setEncFeedback('All old data replaced with the fresh content set.');
+      setArticleFeedback('All old data replaced with the fresh content set.');
+      setProgramFeedback('All old data replaced with the fresh content set.');
+    } catch (error) {
+      if (!useNeonDb) {
+        handleFirestoreError(error, OperationType.WRITE, 'sermons');
+      } else {
+        setSermonFeedback(
+          error instanceof Error ? error.message : 'Unable to replace old data.'
+        );
+      }
+    } finally {
+      setReplacingAll(false);
+    }
   };
 
   // --- SERMON CRUD ---
@@ -535,7 +579,35 @@ export function MinistryStudioModal({
     );
 
     try {
-      if (editingSermonId && !isEditingDemo) {
+      if (useNeonDb) {
+        const existing = editingSermonId
+          ? sermons.find((s) => s.id === editingSermonId)
+          : undefined;
+        await postNeonAction(
+          'upsert_sermon',
+          {
+            id: targetId,
+            title: cleanTitle,
+            category,
+            scriptureRef: cleanRef,
+            scriptureQuote: cleanQuote,
+            summary: cleanSummary,
+            content: cleanContent,
+            readTimeMinutes: cleanReadTime,
+            coverImage: cleanCover,
+            videoUrl: cleanVideo,
+            isFeatured,
+            isPublished,
+            amenCount: existing?.amenCount ?? 0,
+            prayCount: existing?.prayCount ?? 0,
+            loveCount: existing?.loveCount ?? 0,
+            viewCount: existing?.viewCount ?? 0,
+            authorName: resolvedAuthorName,
+          },
+          user
+        );
+        onNeonDataChanged?.();
+      } else if (editingSermonId && !isEditingDemo) {
         const existing = sermons.find((s) => s.id === editingSermonId);
         await updateDoc(doc(db, 'sermons', targetId), {
           title: cleanTitle,
@@ -615,11 +687,17 @@ export function MinistryStudioModal({
       resetSermonForm();
       setSermonFeedback('Sermon / encouragement post saved.');
     } catch (error) {
-      handleFirestoreError(
-        error,
-        editingSermonId && !isEditingDemo ? OperationType.UPDATE : OperationType.CREATE,
-        `sermons/${targetId}`
-      );
+      if (!useNeonDb) {
+        handleFirestoreError(
+          error,
+          editingSermonId && !isEditingDemo ? OperationType.UPDATE : OperationType.CREATE,
+          `sermons/${targetId}`
+        );
+      } else {
+        setSermonFeedback(
+          error instanceof Error ? error.message : 'Unable to save sermon.'
+        );
+      }
     } finally {
       setSavingSermon(false);
     }
@@ -629,19 +707,32 @@ export function MinistryStudioModal({
     if (!user || !isAdmin) return;
     setSavingSermon(true);
     try {
-      for (const starter of STARTER_SERMONS) {
-        const docId = generateDocumentId('sermon');
-        await setDoc(doc(db, 'sermons', docId), {
-          ...starter,
-          authorId: user.uid,
-          createdAt: serverTimestamp(),
-          updatedAt: serverTimestamp(),
-        });
+      if (useNeonDb) {
+        for (const starter of STARTER_SERMONS) {
+          await postNeonAction(
+            'upsert_sermon',
+            { id: generateDocumentId('sermon'), ...starter },
+            user
+          );
+        }
+        onNeonDataChanged?.();
+      } else {
+        for (const starter of STARTER_SERMONS) {
+          const docId = generateDocumentId('sermon');
+          await setDoc(doc(db, 'sermons', docId), {
+            ...starter,
+            authorId: user.uid,
+            createdAt: serverTimestamp(),
+            updatedAt: serverTimestamp(),
+          });
+        }
+        await persistDemoFlag('hideDemoSermons', true);
       }
-      await persistDemoFlag('hideDemoSermons', true);
       setSermonFeedback('Starter posts imported into your database.');
     } catch (error) {
-      handleFirestoreError(error, OperationType.CREATE, 'sermons');
+      if (!useNeonDb) {
+        handleFirestoreError(error, OperationType.CREATE, 'sermons');
+      }
     } finally {
       setSavingSermon(false);
     }
@@ -657,7 +748,9 @@ export function MinistryStudioModal({
         hide ? 'All demo sermons and encouragement posts removed.' : 'Starter demo posts restored.'
       );
     } catch (error) {
-      handleFirestoreError(error, OperationType.WRITE, 'ministry_settings/main');
+      if (!useNeonDb) {
+        handleFirestoreError(error, OperationType.WRITE, 'ministry_settings/main');
+      }
     } finally {
       setSavingSermon(false);
     }
@@ -665,6 +758,16 @@ export function MinistryStudioModal({
 
   const handleDeleteSermon = async (id: string) => {
     if (!user || !isAdmin) return;
+    if (useNeonDb) {
+      try {
+        await postNeonAction('delete_sermon', { id }, user);
+        onNeonDataChanged?.();
+      } catch (err) {
+        setSermonFeedback(err instanceof Error ? err.message : 'Failed to delete sermon.');
+      }
+      return;
+    }
+
     if (id.startsWith('starter-')) {
       setSavingSermon(true);
       try {
@@ -788,7 +891,35 @@ export function MinistryStudioModal({
     );
 
     try {
-      if (editingEncId && !isEditingDemo) {
+      if (useNeonDb) {
+        const existing = editingEncId
+          ? sermons.find((s) => s.id === editingEncId)
+          : undefined;
+        await postNeonAction(
+          'upsert_sermon',
+          {
+            id: targetId,
+            title: cleanTitle,
+            category: 'Word of Encouragement',
+            scriptureRef: cleanRef,
+            scriptureQuote: cleanQuote,
+            summary: cleanSummary,
+            content: cleanContent,
+            readTimeMinutes: cleanReadTime,
+            coverImage: cleanCover,
+            videoUrl: '',
+            isFeatured: false,
+            isPublished: encPublished,
+            amenCount: existing?.amenCount ?? 0,
+            prayCount: existing?.prayCount ?? 0,
+            loveCount: existing?.loveCount ?? 0,
+            viewCount: existing?.viewCount ?? 0,
+            authorName: resolvedAuthorName,
+          },
+          user
+        );
+        onNeonDataChanged?.();
+      } else if (editingEncId && !isEditingDemo) {
         const existing = sermons.find((s) => s.id === editingEncId);
         await updateDoc(doc(db, 'sermons', targetId), {
           title: cleanTitle,
@@ -868,11 +999,17 @@ export function MinistryStudioModal({
       resetEncForm();
       setEncFeedback('Word of Encouragement blog post saved.');
     } catch (error) {
-      handleFirestoreError(
-        error,
-        editingEncId && !isEditingDemo ? OperationType.UPDATE : OperationType.CREATE,
-        `sermons/${targetId}`
-      );
+      if (!useNeonDb) {
+        handleFirestoreError(
+          error,
+          editingEncId && !isEditingDemo ? OperationType.UPDATE : OperationType.CREATE,
+          `sermons/${targetId}`
+        );
+      } else {
+        setEncFeedback(
+          error instanceof Error ? error.message : 'Unable to save encouragement post.'
+        );
+      }
     } finally {
       setSavingEnc(false);
     }
@@ -939,7 +1076,30 @@ export function MinistryStudioModal({
     );
 
     try {
-      if (editingArticleId && !isEditingDemo) {
+      if (useNeonDb) {
+        const existingArticle = editingArticleId
+          ? articles.find((a) => a.id === editingArticleId)
+          : undefined;
+        await postNeonAction(
+          'upsert_article',
+          {
+            id: targetId,
+            title: cleanTitle,
+            questionPrompt: cleanQ,
+            topic: cleanTopic,
+            scriptureRef: cleanRef,
+            excerpt: cleanExcerpt,
+            content: cleanContent,
+            coverImage: cleanCover,
+            readTimeMinutes: cleanTime,
+            viewCount: existingArticle?.viewCount ?? 0,
+            isPublished: artPublished,
+            authorName: resolvedAuthorName,
+          },
+          user
+        );
+        onNeonDataChanged?.();
+      } else if (editingArticleId && !isEditingDemo) {
         const existingArticle = articles.find((a) => a.id === editingArticleId);
         await updateDoc(doc(db, 'faith_articles', targetId), {
           title: cleanTitle,
@@ -1004,11 +1164,17 @@ export function MinistryStudioModal({
       resetArticleForm();
       setArticleFeedback('Faith Q&A article saved.');
     } catch (error) {
-      handleFirestoreError(
-        error,
-        editingArticleId && !isEditingDemo ? OperationType.UPDATE : OperationType.CREATE,
-        `faith_articles/${targetId}`
-      );
+      if (!useNeonDb) {
+        handleFirestoreError(
+          error,
+          editingArticleId && !isEditingDemo ? OperationType.UPDATE : OperationType.CREATE,
+          `faith_articles/${targetId}`
+        );
+      } else {
+        setArticleFeedback(
+          error instanceof Error ? error.message : 'Unable to save article.'
+        );
+      }
     } finally {
       setSavingArticle(false);
     }
@@ -1018,19 +1184,32 @@ export function MinistryStudioModal({
     if (!user || !isAdmin) return;
     setSavingArticle(true);
     try {
-      for (const starter of STARTER_FAITH_ARTICLES) {
-        const docId = generateDocumentId('faith');
-        await setDoc(doc(db, 'faith_articles', docId), {
-          ...starter,
-          authorId: user.uid,
-          createdAt: serverTimestamp(),
-          updatedAt: serverTimestamp(),
-        });
+      if (useNeonDb) {
+        for (const starter of STARTER_FAITH_ARTICLES) {
+          await postNeonAction(
+            'upsert_article',
+            { id: generateDocumentId('faith'), ...starter },
+            user
+          );
+        }
+        onNeonDataChanged?.();
+      } else {
+        for (const starter of STARTER_FAITH_ARTICLES) {
+          const docId = generateDocumentId('faith');
+          await setDoc(doc(db, 'faith_articles', docId), {
+            ...starter,
+            authorId: user.uid,
+            createdAt: serverTimestamp(),
+            updatedAt: serverTimestamp(),
+          });
+        }
+        await persistDemoFlag('hideDemoArticles', true);
       }
-      await persistDemoFlag('hideDemoArticles', true);
       setArticleFeedback('Starter Faith Q&A articles imported into your database.');
     } catch (error) {
-      handleFirestoreError(error, OperationType.CREATE, 'faith_articles');
+      if (!useNeonDb) {
+        handleFirestoreError(error, OperationType.CREATE, 'faith_articles');
+      }
     } finally {
       setSavingArticle(false);
     }
@@ -1046,7 +1225,9 @@ export function MinistryStudioModal({
         hide ? 'All demo faith articles removed.' : 'Starter demo faith articles restored.'
       );
     } catch (error) {
-      handleFirestoreError(error, OperationType.WRITE, 'ministry_settings/main');
+      if (!useNeonDb) {
+        handleFirestoreError(error, OperationType.WRITE, 'ministry_settings/main');
+      }
     } finally {
       setSavingArticle(false);
     }
@@ -1054,6 +1235,16 @@ export function MinistryStudioModal({
 
   const handleDeleteArticle = async (id: string) => {
     if (!user || !isAdmin) return;
+    if (useNeonDb) {
+      try {
+        await postNeonAction('delete_article', { id }, user);
+        onNeonDataChanged?.();
+      } catch (err) {
+        setArticleFeedback(err instanceof Error ? err.message : 'Failed to delete article.');
+      }
+      return;
+    }
+
     if (id.startsWith('starter-')) {
       setSavingArticle(true);
       try {
@@ -1149,7 +1340,23 @@ export function MinistryStudioModal({
         ? editingProgramId
         : generateDocumentId('prog');
     try {
-      if (editingProgramId && !isEditingDemo) {
+      if (useNeonDb) {
+        await postNeonAction(
+          'upsert_program',
+          {
+            id: targetId,
+            title: cleanTitle,
+            schedule: cleanSchedule,
+            format: cleanFormat,
+            description: cleanDesc,
+            locationOrLink: cleanLoc,
+            isActive: progActive,
+            orderIndex: cleanOrder,
+          },
+          user
+        );
+        onNeonDataChanged?.();
+      } else if (editingProgramId && !isEditingDemo) {
         await updateDoc(doc(db, 'programs', targetId), {
           title: cleanTitle,
           schedule: cleanSchedule,
@@ -1198,11 +1405,17 @@ export function MinistryStudioModal({
       resetProgramForm();
       setProgramFeedback('Ministry program saved.');
     } catch (error) {
-      handleFirestoreError(
-        error,
-        editingProgramId && !isEditingDemo ? OperationType.UPDATE : OperationType.CREATE,
-        `programs/${targetId}`
-      );
+      if (!useNeonDb) {
+        handleFirestoreError(
+          error,
+          editingProgramId && !isEditingDemo ? OperationType.UPDATE : OperationType.CREATE,
+          `programs/${targetId}`
+        );
+      } else {
+        setProgramFeedback(
+          error instanceof Error ? error.message : 'Unable to save program.'
+        );
+      }
     } finally {
       setSavingProgram(false);
     }
@@ -1212,19 +1425,32 @@ export function MinistryStudioModal({
     if (!user || !isAdmin) return;
     setSavingProgram(true);
     try {
-      for (const starter of STARTER_PROGRAMS) {
-        const docId = generateDocumentId('prog');
-        await setDoc(doc(db, 'programs', docId), {
-          ...starter,
-          authorId: user.uid,
-          createdAt: serverTimestamp(),
-          updatedAt: serverTimestamp(),
-        });
+      if (useNeonDb) {
+        for (const starter of STARTER_PROGRAMS) {
+          await postNeonAction(
+            'upsert_program',
+            { id: generateDocumentId('prog'), ...starter },
+            user
+          );
+        }
+        onNeonDataChanged?.();
+      } else {
+        for (const starter of STARTER_PROGRAMS) {
+          const docId = generateDocumentId('prog');
+          await setDoc(doc(db, 'programs', docId), {
+            ...starter,
+            authorId: user.uid,
+            createdAt: serverTimestamp(),
+            updatedAt: serverTimestamp(),
+          });
+        }
+        await persistDemoFlag('hideDemoPrograms', true);
       }
-      await persistDemoFlag('hideDemoPrograms', true);
       setProgramFeedback('Starter programs imported into your database.');
     } catch (error) {
-      handleFirestoreError(error, OperationType.CREATE, 'programs');
+      if (!useNeonDb) {
+        handleFirestoreError(error, OperationType.CREATE, 'programs');
+      }
     } finally {
       setSavingProgram(false);
     }
@@ -1240,7 +1466,9 @@ export function MinistryStudioModal({
         hide ? 'All demo programs removed.' : 'Starter demo programs restored.'
       );
     } catch (error) {
-      handleFirestoreError(error, OperationType.WRITE, 'ministry_settings/main');
+      if (!useNeonDb) {
+        handleFirestoreError(error, OperationType.WRITE, 'ministry_settings/main');
+      }
     } finally {
       setSavingProgram(false);
     }
@@ -1248,6 +1476,16 @@ export function MinistryStudioModal({
 
   const handleDeleteProgram = async (id: string) => {
     if (!user || !isAdmin) return;
+    if (useNeonDb) {
+      try {
+        await postNeonAction('delete_program', { id }, user);
+        onNeonDataChanged?.();
+      } catch (err) {
+        setProgramFeedback(err instanceof Error ? err.message : 'Failed to delete program.');
+      }
+      return;
+    }
+
     if (id.startsWith('starter-')) {
       setSavingProgram(true);
       try {
@@ -1295,35 +1533,59 @@ export function MinistryStudioModal({
     nextStatus: PrayerRequestStatus,
     noteText?: string
   ) => {
-    if (!isAdmin) return;
+    if (!isAdmin || !user) return;
     setSavingNote(true);
     const cleanNote = truncateText(
       noteText !== undefined ? noteText : req.adminNote,
       VALIDATION_LIMITS.prayer.adminNoteMax
     );
     try {
-      await updateDoc(doc(db, 'prayer_requests', req.id), {
-        status: nextStatus,
-        adminNote: cleanNote,
-        updatedAt: serverTimestamp(),
-      });
+      if (useNeonDb) {
+        await postNeonAction(
+          'update_prayer_request',
+          { id: req.id, status: nextStatus, adminNote: cleanNote },
+          user
+        );
+        setPrayerRequests((prev) =>
+          prev.map((item) =>
+            item.id === req.id
+              ? { ...item, status: nextStatus, adminNote: cleanNote }
+              : item
+          )
+        );
+      } else {
+        await updateDoc(doc(db, 'prayer_requests', req.id), {
+          status: nextStatus,
+          adminNote: cleanNote,
+          updatedAt: serverTimestamp(),
+        });
+      }
       if (selectedRequest?.id === req.id) {
         setSelectedRequest({ ...req, status: nextStatus, adminNote: cleanNote });
       }
     } catch (error) {
-      handleFirestoreError(error, OperationType.UPDATE, `prayer_requests/${req.id}`);
+      if (!useNeonDb) {
+        handleFirestoreError(error, OperationType.UPDATE, `prayer_requests/${req.id}`);
+      }
     } finally {
       setSavingNote(false);
     }
   };
 
   const handleDeleteRequest = async (id: string) => {
-    if (!isAdmin) return;
+    if (!isAdmin || !user) return;
     try {
-      await deleteDoc(doc(db, 'prayer_requests', id));
+      if (useNeonDb) {
+        await postNeonAction('delete_prayer_request', { id }, user);
+        setPrayerRequests((prev) => prev.filter((item) => item.id !== id));
+      } else {
+        await deleteDoc(doc(db, 'prayer_requests', id));
+      }
       if (selectedRequest?.id === id) setSelectedRequest(null);
     } catch (error) {
-      handleFirestoreError(error, OperationType.DELETE, `prayer_requests/${id}`);
+      if (!useNeonDb) {
+        handleFirestoreError(error, OperationType.DELETE, `prayer_requests/${id}`);
+      }
     }
   };
 
@@ -1337,10 +1599,25 @@ export function MinistryStudioModal({
     const payload = buildSettingsPayload(settingsForm, user.uid);
 
     try {
-      await setDoc(doc(db, 'ministry_settings', 'main'), payload);
+      if (useNeonDb) {
+        await postNeonAction(
+          'save_settings',
+          settingsForm as unknown as Record<string, unknown>,
+          user
+        );
+        onNeonDataChanged?.();
+      } else {
+        await setDoc(doc(db, 'ministry_settings', 'main'), payload);
+      }
       setSettingsFeedback('Hero section, profile, footer & social links saved.');
     } catch (error) {
-      handleFirestoreError(error, OperationType.WRITE, 'ministry_settings/main');
+      if (!useNeonDb) {
+        handleFirestoreError(error, OperationType.WRITE, 'ministry_settings/main');
+      } else {
+        setSettingsFeedback(
+          error instanceof Error ? error.message : 'Unable to save settings.'
+        );
+      }
     } finally {
       setSavingSettings(false);
     }
@@ -1382,8 +1659,41 @@ export function MinistryStudioModal({
               </h2>
             </div>
           </div>
-          <div className="flex items-center gap-3">
-            {(studioToken || user) && (
+          <div className="flex items-center gap-2 sm:gap-3 flex-wrap justify-end">
+            {isAdmin && (
+              confirmReplaceAll ? (
+                <div className="inline-flex items-center gap-1.5">
+                  <button
+                    type="button"
+                    disabled={replacingAll}
+                    onClick={() => void handleReplaceAllOldData()}
+                    className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-semibold bg-[#991B1B] text-white hover:bg-[#7F1D1D] cursor-pointer whitespace-nowrap disabled:opacity-50"
+                  >
+                    <RotateCcw className="w-3.5 h-3.5" />
+                    <span>{replacingAll ? 'Replacing...' : 'Confirm Reset Data'}</span>
+                  </button>
+                  <button
+                    type="button"
+                    disabled={replacingAll}
+                    onClick={() => setConfirmReplaceAll(false)}
+                    className="px-2.5 py-2 rounded-lg text-xs font-medium border border-[#E4E4E7] bg-white text-[#0B0B0D] hover:bg-[#F4F4F5] cursor-pointer"
+                  >
+                    Cancel
+                  </button>
+                </div>
+              ) : (
+                <button
+                  type="button"
+                  disabled={replacingAll}
+                  onClick={() => setConfirmReplaceAll(true)}
+                  className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-medium border border-[#E4E4E7] bg-white text-[#0B0B0D] hover:bg-[#F4F4F5] cursor-pointer whitespace-nowrap"
+                >
+                  <RotateCcw className="w-3.5 h-3.5 text-[#2563EB]" />
+                  <span>Replace Old Data</span>
+                </button>
+              )
+            )}
+            {user && (
               <button
                 type="button"
                 onClick={() => void handleSignOut()}
@@ -1404,84 +1714,56 @@ export function MinistryStudioModal({
           </div>
         </div>
 
-        {!studioToken ? (
+        {!isAdmin ? (
           <div className="p-8 sm:p-12 max-w-md w-full mx-auto space-y-5">
             <div className="text-center space-y-2">
               <div className="w-12 h-12 rounded-2xl bg-[#EEF2FF] text-[#2563EB] flex items-center justify-center mx-auto">
                 <Shield className="w-6 h-6" />
               </div>
               <h3 className="text-2xl font-semibold text-[#0B0B0D]">
-                {serverConfigured === false ? 'Claim Admin Account' : 'Admin Login'}
+                Admin Login
               </h3>
               <p className="text-sm text-[#52525B] leading-relaxed">
-                {serverConfigured === false
-                  ? 'First-time setup: create your ministry account name and password to unlock the studio (or set ADMIN_USERNAME & ADMIN_PASSWORD in Secrets).'
-                  : 'Enter your ministry account name and password to manage sermons, words of encouragement, programs, and inbox.'}
+                {user
+                  ? `Signed in as ${user.email || 'another account'}. Please sign in with the authorized administrator Google account to manage content and view private prayer requests.`
+                  : 'Sign in with your authorized administrator Google account to manage sermons, blog posts, programs, and prayer inbox across all deployments.'}
               </p>
             </div>
 
-            {gateError && (
-              <p className="p-3 rounded-lg text-xs text-[#991B1B] bg-[#FEF2F2] border border-[#FECACA]">
-                {gateError}
+            {authError && (
+              <p className="p-3 rounded-lg text-xs text-[#991B1B] bg-[#FEF2F2] border border-[#FECACA] leading-relaxed">
+                {authError}
               </p>
             )}
 
-            <form onSubmit={handleGateSubmit} className="space-y-4">
-              <div>
-                <label
-                  htmlFor="admin-account-name"
-                  className="block text-xs font-semibold text-[#52525B] mb-1.5"
-                >
-                  Account Name
-                </label>
-                <input
-                  id="admin-account-name"
-                  type="text"
-                  required
-                  autoComplete="username"
-                  value={accountName}
-                  onChange={(e) => setAccountName(e.target.value)}
-                  placeholder="Enter account name"
-                  className="w-full px-3.5 py-2.5 rounded-lg text-sm bg-white border border-[#E4E4E7] text-[#0B0B0D] focus:outline-none focus:border-[#2563EB]"
-                />
-              </div>
-
-              <div>
-                <label
-                  htmlFor="admin-account-password"
-                  className="block text-xs font-semibold text-[#52525B] mb-1.5"
-                >
-                  Password
-                </label>
-                <input
-                  id="admin-account-password"
-                  type="password"
-                  required
-                  autoComplete={
-                    serverConfigured === false ? 'new-password' : 'current-password'
-                  }
-                  value={accountPassword}
-                  onChange={(e) => setAccountPassword(e.target.value)}
-                  placeholder="Enter password"
-                  className="w-full px-3.5 py-2.5 rounded-lg text-sm bg-white border border-[#E4E4E7] text-[#0B0B0D] focus:outline-none focus:border-[#2563EB]"
-                />
-              </div>
-
+            <div className="space-y-3">
               <button
-                type="submit"
-                disabled={gateSubmitting}
+                type="button"
+                onClick={() => void handleGoogleSignIn()}
+                disabled={signingIn}
                 className="w-full inline-flex items-center justify-center gap-2 px-6 py-3 rounded-lg text-sm font-semibold bg-[#0B0B0D] text-white hover:bg-[#2563EB] transition-colors cursor-pointer disabled:opacity-60"
               >
-                <Shield className="w-4 h-4" />
+                <LogIn className="w-4 h-4" />
                 <span>
-                  {gateSubmitting
-                    ? 'Verifying...'
-                    : serverConfigured === false
-                    ? 'Create & Unlock Studio'
-                    : 'Unlock Studio'}
+                  {signingIn
+                    ? 'Connecting...'
+                    : user
+                    ? 'Switch Google Account'
+                    : 'Sign in with Google'}
                 </span>
               </button>
-            </form>
+
+              {user && (
+                <button
+                  type="button"
+                  onClick={() => void handleSignOut()}
+                  className="w-full inline-flex items-center justify-center gap-2 px-6 py-2.5 rounded-lg text-xs font-semibold border border-[#E4E4E7] bg-white text-[#0B0B0D] hover:bg-[#F4F4F5] transition-colors cursor-pointer"
+                >
+                  <LogOut className="w-3.5 h-3.5" />
+                  <span>Sign Out</span>
+                </button>
+              )}
+            </div>
           </div>
         ) : (
           <>
@@ -1519,45 +1801,6 @@ export function MinistryStudioModal({
             </div>
 
             <div className="flex-1 overflow-y-auto p-6 space-y-6">
-              {!isAdmin && (
-                <div className="p-4 rounded-xl bg-[#EEF2FF] border border-[#C7D2FE] flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-                  <div className="space-y-1">
-                    <p className="text-xs font-semibold uppercase tracking-wider text-[#2563EB]">
-                      Cloud Database Sync Needed
-                    </p>
-                    <p className="text-sm text-[#0B0B0D]">
-                      {!user
-                        ? `Connect your Google account (${ADMIN_EMAIL}) to publish changes and read private prayer requests.`
-                        : `Signed in as ${user.email}. Switch to ${ADMIN_EMAIL} to enable database publishing and inbox access.`}
-                    </p>
-                    {authError && (
-                      <p className="text-xs text-[#991B1B] mt-1">{authError}</p>
-                    )}
-                  </div>
-                  <div className="flex items-center gap-2 shrink-0">
-                    {user && (
-                      <button
-                        type="button"
-                        onClick={() => void signOut(auth)}
-                        className="px-3.5 py-2 rounded-lg text-xs font-medium border border-[#E4E4E7] bg-white hover:bg-[#F4F4F5] cursor-pointer"
-                      >
-                        Disconnect
-                      </button>
-                    )}
-                    <button
-                      type="button"
-                      onClick={handleGoogleSignIn}
-                      disabled={signingIn}
-                      className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg text-xs font-semibold bg-[#2563EB] text-white hover:bg-[#1D4ED8] cursor-pointer whitespace-nowrap"
-                    >
-                      <LogIn className="w-3.5 h-3.5" />
-                      <span>
-                        {signingIn ? 'Connecting...' : 'Connect Google Account'}
-                      </span>
-                    </button>
-                  </div>
-                </div>
-              )}
 
               {/* TAB 1: SERMONS & MIDWEEK VIDEOS ONLY */}
               {activeTab === 'sermons' && (() => {
@@ -1699,7 +1942,7 @@ export function MinistryStudioModal({
                           label="Video Thumbnail Image"
                           value={coverImage}
                           onChange={setCoverImage}
-                          studioToken={studioToken}
+                          user={user}
                           presets={COVER_IMAGE_PRESETS}
                           helperText="Upload a video thumbnail image from your device or choose starter artwork."
                         />
@@ -2023,7 +2266,7 @@ export function MinistryStudioModal({
                               label="Blog Post Image"
                               value={encCoverImage}
                               onChange={setEncCoverImage}
-                              studioToken={studioToken}
+                              user={user}
                               presets={COVER_IMAGE_PRESETS}
                               helperText="Upload an image file for this encouragement post (displayed on Home & Blog)."
                             />
@@ -2277,7 +2520,7 @@ export function MinistryStudioModal({
                               label="Article Cover Image"
                               value={artCoverImage}
                               onChange={setArtCoverImage}
-                              studioToken={studioToken}
+                              user={user}
                               presets={COVER_IMAGE_PRESETS}
                               helperText="Upload an image file for this faith blog article."
                             />
@@ -2974,7 +3217,7 @@ export function MinistryStudioModal({
                           portraitUrl: nextUrl,
                         })
                       }
-                      studioToken={studioToken}
+                      user={user}
                       presets={COVER_IMAGE_PRESETS}
                       helperText="Upload a portrait image from your device or select starter artwork."
                     />
