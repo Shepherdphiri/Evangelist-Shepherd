@@ -1,6 +1,17 @@
 import crypto from 'node:crypto';
 import { neon } from '@neondatabase/serverless';
-import { verifyFirebaseAdminToken } from './firebaseAuthVerify.ts';
+import {
+  checkLoginRateLimit,
+  clearAdminSessionCookie,
+  clearLoginRateLimit,
+  createAdminSessionToken,
+  getClientIp,
+  isPasswordAuthConfigured,
+  recordFailedLoginAttempt,
+  setAdminSessionCookie,
+  verifyAdminAccess,
+  verifyAdminPassword,
+} from './adminSession.ts';
 import {
   DEFAULT_MINISTRY_SETTINGS_DATA,
   STARTER_FAITH_ARTICLES_DATA,
@@ -22,6 +33,8 @@ export interface ApiResponseLike {
   status: (code: number) => ApiResponseLike;
   json: (payload: unknown) => void;
   setHeader: (name: string, value: string) => void;
+  send?: (body: Buffer | string) => void;
+  end?: (body?: Buffer | string) => void;
 }
 
 const VALID_ID_RE = /^[a-zA-Z0-9_-]{1,128}$/;
@@ -86,6 +99,41 @@ function sanitizeUrl(val: unknown, max: number): string {
 function makeId(prefix: string): string {
   const clean = prefix.replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 20) || 'doc';
   return `${clean}_${Date.now()}_${crypto.randomBytes(6).toString('hex')}`;
+}
+
+function verifyImageMagicBytes(buf: Buffer, ext: string): boolean {
+  if (buf.length < 12) return false;
+  if (ext === 'jpg') {
+    return buf[0] === 0xff && buf[1] === 0xd8 && buf[2] === 0xff;
+  }
+  if (ext === 'png') {
+    return (
+      buf[0] === 0x89 &&
+      buf[1] === 0x50 &&
+      buf[2] === 0x4e &&
+      buf[3] === 0x47 &&
+      buf[4] === 0x0d &&
+      buf[5] === 0x0a &&
+      buf[6] === 0x1a &&
+      buf[7] === 0x0a
+    );
+  }
+  if (ext === 'gif') {
+    return buf[0] === 0x47 && buf[1] === 0x49 && buf[2] === 0x46 && buf[3] === 0x38;
+  }
+  if (ext === 'webp') {
+    return (
+      buf[0] === 0x52 &&
+      buf[1] === 0x49 &&
+      buf[2] === 0x46 &&
+      buf[3] === 0x46 &&
+      buf[8] === 0x57 &&
+      buf[9] === 0x45 &&
+      buf[10] === 0x42 &&
+      buf[11] === 0x50
+    );
+  }
+  return false;
 }
 
 async function ensureSchemaAndSeed(sql: SqlClient): Promise<void> {
@@ -210,6 +258,15 @@ async function ensureSchemaAndSeed(sql: SqlClient): Promise<void> {
           pray_count INTEGER NOT NULL DEFAULT 0,
           love_count INTEGER NOT NULL DEFAULT 0,
           updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        )
+      `;
+
+      await sql`
+        CREATE TABLE IF NOT EXISTS uploaded_media (
+          id TEXT PRIMARY KEY,
+          mime_type TEXT NOT NULL,
+          data_base64 TEXT NOT NULL,
+          created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
         )
       `;
 
@@ -414,19 +471,23 @@ function mapPrayerRow(r: Record<string, unknown>) {
   };
 }
 
-function parseActionQuery(req: ApiRequestLike): string {
-  if (req.query && typeof req.query.action === 'string') {
-    return req.query.action;
+function parseQueryParam(req: ApiRequestLike, key: string): string {
+  if (req.query && typeof req.query[key] === 'string') {
+    return String(req.query[key]);
   }
   if (req.url) {
     try {
       const parsed = new URL(req.url, 'http://localhost');
-      return parsed.searchParams.get('action') || '';
+      return parsed.searchParams.get(key) || '';
     } catch {
       return '';
     }
   }
   return '';
+}
+
+function parseActionQuery(req: ApiRequestLike): string {
+  return parseQueryParam(req, 'action');
 }
 
 function parseBodyObject(rawBody: unknown): Record<string, unknown> {
@@ -454,9 +515,30 @@ export async function handleNeonApiRequest(
 
   if (!sql) {
     if (req.method === 'GET') {
-      res.status(200).json({ enabled: false });
+      const admin = await verifyAdminAccess(req.headers);
+      res.status(200).json({
+        enabled: false,
+        passwordAuthConfigured: isPasswordAuthConfigured(),
+        isAdminSession: Boolean(admin),
+      });
       return;
     }
+
+    const body = parseBodyObject(req.body);
+    const action = typeof body.action === 'string' ? body.action : '';
+    if (action === 'admin_logout') {
+      clearAdminSessionCookie(res, req.headers);
+      res.status(200).json({ ok: true });
+      return;
+    }
+    if (action === 'admin_login') {
+      res.status(503).json({
+        enabled: false,
+        error: 'Set DATABASE_URL (your NeonDB connection string) in your server environment variables first.',
+      });
+      return;
+    }
+
     res.status(501).json({
       enabled: false,
       error: 'NeonDB DATABASE_URL is not configured on this server.',
@@ -470,8 +552,41 @@ export async function handleNeonApiRequest(
     if (req.method === 'GET') {
       const action = parseActionQuery(req) || 'bootstrap';
 
+      if (action === 'media') {
+        const mediaId = parseQueryParam(req, 'id').trim();
+        if (!VALID_ID_RE.test(mediaId)) {
+          res.status(400).json({ error: 'Invalid media ID.' });
+          return;
+        }
+        const rows = (await sql`
+          SELECT mime_type, data_base64 FROM uploaded_media WHERE id = ${mediaId} LIMIT 1
+        `) as Array<{ mime_type?: string; data_base64?: string }>;
+        if (rows.length === 0 || !rows[0].data_base64) {
+          res.status(404).json({ error: 'Media not found.' });
+          return;
+        }
+        const mimeType =
+          rows[0].mime_type &&
+          ['image/jpeg', 'image/png', 'image/webp', 'image/gif'].includes(rows[0].mime_type)
+            ? rows[0].mime_type
+            : 'image/jpeg';
+        const buffer = Buffer.from(rows[0].data_base64, 'base64');
+        res.setHeader('Content-Type', mimeType);
+        res.setHeader('X-Content-Type-Options', 'nosniff');
+        res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+        const target = res.status(200);
+        if (typeof target.send === 'function') {
+          target.send(buffer);
+        } else if (typeof target.end === 'function') {
+          target.end(buffer);
+        } else {
+          target.json({ error: 'Binary response unsupported.' });
+        }
+        return;
+      }
+
       if (action === 'inbox') {
-        const admin = await verifyFirebaseAdminToken(req.headers.authorization);
+        const admin = await verifyAdminAccess(req.headers);
         if (!admin) {
           res.status(401).json({ error: 'Admin sign-in required.' });
           return;
@@ -486,7 +601,7 @@ export async function handleNeonApiRequest(
         return;
       }
 
-      const admin = await verifyFirebaseAdminToken(req.headers.authorization);
+      const admin = await verifyAdminAccess(req.headers);
 
       const settingsRows = (await sql`
         SELECT * FROM ministry_settings WHERE id = 'main' LIMIT 1
@@ -529,6 +644,8 @@ export async function handleNeonApiRequest(
 
       res.status(200).json({
         enabled: true,
+        passwordAuthConfigured: isPasswordAuthConfigured(),
+        isAdminSession: Boolean(admin),
         settings: mapSettingsRow(settingsRows[0]),
         sermons: sermonRows.map(mapSermonRow),
         articles: articleRows.map(mapArticleRow),
@@ -545,6 +662,49 @@ export async function handleNeonApiRequest(
 
     const body = parseBodyObject(req.body);
     const action = typeof body.action === 'string' ? body.action : '';
+
+    // --- ADMIN SESSION LOGIN / LOGOUT ---
+    if (action === 'admin_login') {
+      if (!isPasswordAuthConfigured()) {
+        res.status(503).json({
+          error: 'ADMIN_PASSWORD is not configured in server environment variables.',
+        });
+        return;
+      }
+
+      const clientIp = getClientIp(req.headers);
+      const limitCheck = checkLoginRateLimit(clientIp);
+      if (!limitCheck.allowed) {
+        res.status(429).json({
+          error: `Too many login attempts. Please wait ${limitCheck.retryAfterSec} seconds and try again.`,
+        });
+        return;
+      }
+
+      const candidate = typeof body.password === 'string' ? body.password : '';
+      if (!candidate || candidate.length > 256 || !verifyAdminPassword(candidate)) {
+        recordFailedLoginAttempt(clientIp);
+        await new Promise((r) => setTimeout(r, 250));
+        res.status(401).json({ error: 'Incorrect admin password.' });
+        return;
+      }
+
+      clearLoginRateLimit(clientIp);
+      const token = createAdminSessionToken();
+      if (!token) {
+        res.status(500).json({ error: 'Unable to create admin session.' });
+        return;
+      }
+      setAdminSessionCookie(res, req.headers, token);
+      res.status(200).json({ ok: true, sessionToken: token });
+      return;
+    }
+
+    if (action === 'admin_logout') {
+      clearAdminSessionCookie(res, req.headers);
+      res.status(200).json({ ok: true });
+      return;
+    }
 
     // --- PUBLIC ENDPOINTS ---
     if (action === 'increment_metric') {
@@ -624,9 +784,48 @@ export async function handleNeonApiRequest(
     }
 
     // --- ADMIN-ONLY MUTATIONS ---
-    const admin = await verifyFirebaseAdminToken(req.headers.authorization);
+    const admin = await verifyAdminAccess(req.headers);
     if (!admin) {
-      res.status(401).json({ error: 'Authorized Firebase admin sign-in is required.' });
+      res.status(401).json({ error: 'Authorized admin sign-in is required.' });
+      return;
+    }
+
+    if (action === 'upload_image') {
+      const dataUrl = typeof body.dataUrl === 'string' ? body.dataUrl : '';
+      const match = dataUrl.match(/^data:image\/(jpeg|jpg|png|webp|gif);base64,([A-Za-z0-9+/=]+)$/);
+      if (!match) {
+        res.status(400).json({ error: 'Invalid image format. Allowed: JPEG, PNG, WebP, or GIF.' });
+        return;
+      }
+
+      const rawSubtype = match[1].toLowerCase();
+      const ext = rawSubtype === 'jpeg' || rawSubtype === 'jpg' ? 'jpg' : rawSubtype;
+      const mimeType =
+        ext === 'jpg'
+          ? 'image/jpeg'
+          : ext === 'png'
+          ? 'image/png'
+          : ext === 'webp'
+          ? 'image/webp'
+          : 'image/gif';
+
+      const buffer = Buffer.from(match[2], 'base64');
+      if (buffer.length === 0 || buffer.length > 3 * 1024 * 1024) {
+        res.status(413).json({ error: 'Image must be smaller than 3 MB.' });
+        return;
+      }
+
+      if (!verifyImageMagicBytes(buffer, ext)) {
+        res.status(400).json({ error: 'Uploaded file does not match a valid image signature.' });
+        return;
+      }
+
+      const mediaId = makeId('media');
+      await sql`
+        INSERT INTO uploaded_media (id, mime_type, data_base64)
+        VALUES (${mediaId}, ${mimeType}, ${match[2]})
+      `;
+      res.status(200).json({ ok: true, url: `/api/neondb?action=media&id=${mediaId}` });
       return;
     }
 

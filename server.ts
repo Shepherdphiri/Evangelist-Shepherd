@@ -5,13 +5,13 @@ import { fileURLToPath } from 'node:url';
 import dotenv from 'dotenv';
 import express from 'express';
 import { createServer as createViteServer } from 'vite';
-import { verifyFirebaseAdminToken } from './lib/firebaseAuthVerify.ts';
+import { verifyAdminAccess } from './lib/adminSession.ts';
 import { handleNeonApiRequest } from './lib/neonBackend.ts';
 
 dotenv.config();
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const PORT = 3000;
+const PORT = Number(process.env.PORT) || 3000;
 
 function verifyImageMagicBytes(buf: Buffer, ext: string): boolean {
   if (buf.length < 12) return false;
@@ -63,7 +63,7 @@ async function startServer() {
     })
   );
 
-  const neonJson = express.json({ limit: '512kb' });
+  const neonJson = express.json({ limit: '5mb' });
   app.all('/api/neondb', neonJson, async (req, res) => {
     await handleNeonApiRequest(
       {
@@ -78,9 +78,9 @@ async function startServer() {
   });
 
   app.post('/api/admin/upload-image', express.json({ limit: '6mb' }), async (req, res) => {
-    const adminSession = await verifyFirebaseAdminToken(req.headers.authorization);
+    const adminSession = await verifyAdminAccess(req.headers);
     if (!adminSession) {
-      res.status(401).json({ error: 'Authorized Firebase admin sign-in is required to upload images.' });
+      res.status(401).json({ error: 'Authorized admin sign-in is required to upload images.' });
       return;
     }
 

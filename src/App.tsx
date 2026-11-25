@@ -84,6 +84,8 @@ function EvangelistShepherdApp() {
   const [user, setUser] = useState<User | null>(null);
   const [authReady, setAuthReady] = useState(false);
   const [dbMode, setDbMode] = useState<'checking' | 'neon' | 'firestore'>('checking');
+  const [neonAdminSession, setNeonAdminSession] = useState(false);
+  const [passwordAuthConfigured, setPasswordAuthConfigured] = useState(false);
 
   const [firestoreSermons, setFirestoreSermons] = useState<Sermon[]>([]);
   const [sermonsLoaded, setSermonsLoaded] = useState(false);
@@ -130,9 +132,11 @@ function EvangelistShepherdApp() {
     })()
   );
 
-  const isAdmin = Boolean(
+  const isFirebaseAdmin = Boolean(
     authReady && user && user.email === ADMIN_EMAIL && user.emailVerified
   );
+  const isAdmin =
+    dbMode === 'neon' ? neonAdminSession || isFirebaseAdmin : isFirebaseAdmin;
 
   useEffect(() => {
     const onHashChange = () => {
@@ -162,6 +166,8 @@ function EvangelistShepherdApp() {
 
   const applyNeonSnapshot = useCallback(
     (data: Awaited<ReturnType<typeof fetchNeonBootstrap>>) => {
+      setPasswordAuthConfigured(Boolean(data.passwordAuthConfigured));
+      setNeonAdminSession(Boolean(data.isAdminSession));
       if (!data.enabled) return;
       if (data.settings) setSettings(data.settings);
       if (Array.isArray(data.sermons)) {
@@ -193,12 +199,10 @@ function EvangelistShepherdApp() {
   );
 
   const syncNeonData = useCallback(async () => {
-    const data = await fetchNeonBootstrap(isAdmin ? user : null);
-    if (data.enabled) {
-      applyNeonSnapshot(data);
-    }
+    const data = await fetchNeonBootstrap(user);
+    applyNeonSnapshot(data);
     return data.enabled;
-  }, [applyNeonSnapshot, isAdmin, user]);
+  }, [applyNeonSnapshot, user]);
 
   useEffect(() => {
     if (!authReady) return;
@@ -889,6 +893,7 @@ function EvangelistShepherdApp() {
         user={user}
         isAdmin={isAdmin}
         useNeonDb={dbMode === 'neon'}
+        passwordAuthConfigured={passwordAuthConfigured}
         onNeonDataChanged={() => void syncNeonData()}
         sermons={firestoreSermons.length > 0 ? firestoreSermons : publishedPosts}
         hasFirestoreSermons={firestoreSermons.length > 0}

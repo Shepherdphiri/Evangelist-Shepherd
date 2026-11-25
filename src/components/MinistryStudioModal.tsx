@@ -15,9 +15,11 @@ import {
   Calendar,
   Check,
   Edit3,
+  Eye,
   EyeOff,
   FileText,
   Inbox,
+  KeyRound,
   LogIn,
   LogOut,
   Plus,
@@ -58,7 +60,12 @@ import {
   STARTER_PROGRAMS,
   STARTER_SERMONS,
 } from '../data/defaultMinistryData';
-import { fetchNeonInbox, postNeonAction } from '../lib/neonClient';
+import {
+  fetchNeonInbox,
+  loginNeonAdmin,
+  logoutNeonAdmin,
+  postNeonAction,
+} from '../lib/neonClient';
 import { ImageUploadField } from './ImageUploadField';
 
 export type StudioTab = 'sermons' | 'blog' | 'programs' | 'inbox' | 'social';
@@ -70,6 +77,7 @@ interface MinistryStudioModalProps {
   user: User | null;
   isAdmin: boolean;
   useNeonDb?: boolean;
+  passwordAuthConfigured?: boolean;
   onNeonDataChanged?: () => void;
   sermons: Sermon[];
   hasFirestoreSermons: boolean;
@@ -87,6 +95,7 @@ export function MinistryStudioModal({
   user,
   isAdmin,
   useNeonDb = false,
+  passwordAuthConfigured = false,
   onNeonDataChanged,
   sermons,
   hasFirestoreSermons,
@@ -99,6 +108,9 @@ export function MinistryStudioModal({
   const [activeTab, setActiveTab] = useState<StudioTab>(initialTab);
   const [authError, setAuthError] = useState('');
   const [signingIn, setSigningIn] = useState(false);
+  const [adminPassword, setAdminPassword] = useState('');
+  const [showAdminPassword, setShowAdminPassword] = useState(false);
+  const [loggingInPassword, setLoggingInPassword] = useState(false);
   const [confirmReplaceAll, setConfirmReplaceAll] = useState(false);
   const [replacingAll, setReplacingAll] = useState(false);
 
@@ -185,7 +197,7 @@ export function MinistryStudioModal({
   }, [settings]);
 
   useEffect(() => {
-    if (!isOpen || !isAdmin || !user) {
+    if (!isOpen || !isAdmin || (!useNeonDb && !user)) {
       setPrayerRequests([]);
       return;
     }
@@ -250,8 +262,32 @@ export function MinistryStudioModal({
 
   const handleSignOut = async () => {
     setAuthError('');
+    setAdminPassword('');
+    await logoutNeonAdmin();
+    onNeonDataChanged?.();
     if (user) {
       await signOut(auth);
+    }
+  };
+
+  const handlePasswordSignIn = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setAuthError('');
+    if (!adminPassword.trim()) {
+      setAuthError('Please enter your admin password.');
+      return;
+    }
+    setLoggingInPassword(true);
+    try {
+      await loginNeonAdmin(adminPassword);
+      setAdminPassword('');
+      onNeonDataChanged?.();
+    } catch (err) {
+      setAuthError(
+        err instanceof Error ? err.message : 'Unable to sign in with admin password.'
+      );
+    } finally {
+      setLoggingInPassword(false);
     }
   };
 
@@ -396,7 +432,7 @@ export function MinistryStudioModal({
     key: 'hideDemoSermons' | 'hideDemoArticles' | 'hideDemoPrograms',
     value: boolean
   ) => {
-    if (!user || !isAdmin) return;
+    if (!isAdmin) return;
     const nextSettings: MinistrySettings = {
       ...settingsForm,
       [key]: value,
@@ -407,6 +443,7 @@ export function MinistryStudioModal({
       onNeonDataChanged?.();
       return;
     }
+    if (!user) return;
     await setDoc(
       doc(db, 'ministry_settings', 'main'),
       buildSettingsPayload(nextSettings, user.uid)
@@ -414,7 +451,7 @@ export function MinistryStudioModal({
   };
 
   const handleReplaceAllOldData = async () => {
-    if (!user || !isAdmin) return;
+    if (!isAdmin || (!useNeonDb && !user)) return;
     setReplacingAll(true);
     setConfirmReplaceAll(false);
     setSermonFeedback('');
@@ -426,7 +463,7 @@ export function MinistryStudioModal({
       if (useNeonDb) {
         await postNeonAction('replace_all_data', {}, user);
         onNeonDataChanged?.();
-      } else {
+      } else if (user) {
         const collectionsToClear = ['sermons', 'faith_articles', 'programs', 'engagement_metrics'] as const;
         for (const colName of collectionsToClear) {
           const snap = await getDocs(collection(db, colName));
@@ -535,7 +572,7 @@ export function MinistryStudioModal({
 
   const handleSaveSermon = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!user || !isAdmin) return;
+    if (!isAdmin || (!useNeonDb && !user)) return;
     setSermonFeedback('');
 
     const cleanTitle = truncateText(title, VALIDATION_LIMITS.sermon.titleMax);
@@ -628,7 +665,7 @@ export function MinistryStudioModal({
           authorName: resolvedAuthorName,
           updatedAt: serverTimestamp(),
         });
-      } else {
+      } else if (user) {
         const existingDemo = isEditingDemo
           ? sermons.find((s) => s.id === editingSermonId)
           : undefined;
@@ -704,7 +741,7 @@ export function MinistryStudioModal({
   };
 
   const handleSeedStarterSermons = async () => {
-    if (!user || !isAdmin) return;
+    if (!isAdmin || (!useNeonDb && !user)) return;
     setSavingSermon(true);
     try {
       if (useNeonDb) {
@@ -716,7 +753,7 @@ export function MinistryStudioModal({
           );
         }
         onNeonDataChanged?.();
-      } else {
+      } else if (user) {
         for (const starter of STARTER_SERMONS) {
           const docId = generateDocumentId('sermon');
           await setDoc(doc(db, 'sermons', docId), {
@@ -739,7 +776,7 @@ export function MinistryStudioModal({
   };
 
   const handleToggleDemoSermons = async (hide: boolean) => {
-    if (!user || !isAdmin) return;
+    if (!isAdmin || (!useNeonDb && !user)) return;
     setSavingSermon(true);
     setSermonFeedback('');
     try {
@@ -757,7 +794,7 @@ export function MinistryStudioModal({
   };
 
   const handleDeleteSermon = async (id: string) => {
-    if (!user || !isAdmin) return;
+    if (!isAdmin || (!useNeonDb && !user)) return;
     if (useNeonDb) {
       try {
         await postNeonAction('delete_sermon', { id }, user);
@@ -768,7 +805,7 @@ export function MinistryStudioModal({
       return;
     }
 
-    if (id.startsWith('starter-')) {
+    if (id.startsWith('starter-') && user) {
       setSavingSermon(true);
       try {
         const remaining = sermons.filter((s) => s.id !== id);
@@ -848,7 +885,7 @@ export function MinistryStudioModal({
 
   const handleSaveEnc = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!user || !isAdmin) return;
+    if (!isAdmin || (!useNeonDb && !user)) return;
     setEncFeedback('');
 
     const cleanTitle = truncateText(encTitle, VALIDATION_LIMITS.sermon.titleMax);
@@ -940,7 +977,7 @@ export function MinistryStudioModal({
           authorName: resolvedAuthorName,
           updatedAt: serverTimestamp(),
         });
-      } else {
+      } else if (user) {
         const existingDemo = isEditingDemo
           ? sermons.find((s) => s.id === editingEncId)
           : undefined;
@@ -1047,7 +1084,7 @@ export function MinistryStudioModal({
 
   const handleSaveArticle = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!user || !isAdmin) return;
+    if (!isAdmin || (!useNeonDb && !user)) return;
     setArticleFeedback('');
 
     const cleanTitle = truncateText(artTitle, VALIDATION_LIMITS.article.titleMax);
@@ -1115,7 +1152,7 @@ export function MinistryStudioModal({
           authorName: resolvedAuthorName,
           updatedAt: serverTimestamp(),
         });
-      } else {
+      } else if (user) {
         const existingDemo = isEditingDemo
           ? articles.find((a) => a.id === editingArticleId)
           : undefined;
@@ -1181,7 +1218,7 @@ export function MinistryStudioModal({
   };
 
   const handleSeedStarterArticles = async () => {
-    if (!user || !isAdmin) return;
+    if (!isAdmin || (!useNeonDb && !user)) return;
     setSavingArticle(true);
     try {
       if (useNeonDb) {
@@ -1193,7 +1230,7 @@ export function MinistryStudioModal({
           );
         }
         onNeonDataChanged?.();
-      } else {
+      } else if (user) {
         for (const starter of STARTER_FAITH_ARTICLES) {
           const docId = generateDocumentId('faith');
           await setDoc(doc(db, 'faith_articles', docId), {
@@ -1216,7 +1253,7 @@ export function MinistryStudioModal({
   };
 
   const handleToggleDemoArticles = async (hide: boolean) => {
-    if (!user || !isAdmin) return;
+    if (!isAdmin || (!useNeonDb && !user)) return;
     setSavingArticle(true);
     setArticleFeedback('');
     try {
@@ -1234,7 +1271,7 @@ export function MinistryStudioModal({
   };
 
   const handleDeleteArticle = async (id: string) => {
-    if (!user || !isAdmin) return;
+    if (!isAdmin || (!useNeonDb && !user)) return;
     if (useNeonDb) {
       try {
         await postNeonAction('delete_article', { id }, user);
@@ -1245,7 +1282,7 @@ export function MinistryStudioModal({
       return;
     }
 
-    if (id.startsWith('starter-')) {
+    if (id.startsWith('starter-') && user) {
       setSavingArticle(true);
       try {
         const remaining = articles.filter((a) => a.id !== id);
@@ -1318,7 +1355,7 @@ export function MinistryStudioModal({
 
   const handleSaveProgram = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!user || !isAdmin) return;
+    if (!isAdmin || (!useNeonDb && !user)) return;
     setProgramFeedback('');
 
     const cleanTitle = truncateText(progTitle, VALIDATION_LIMITS.program.titleMax);
@@ -1367,7 +1404,7 @@ export function MinistryStudioModal({
           orderIndex: cleanOrder,
           updatedAt: serverTimestamp(),
         });
-      } else {
+      } else if (user) {
         await setDoc(doc(db, 'programs', targetId), {
           title: cleanTitle,
           schedule: cleanSchedule,
@@ -1422,7 +1459,7 @@ export function MinistryStudioModal({
   };
 
   const handleSeedStarterPrograms = async () => {
-    if (!user || !isAdmin) return;
+    if (!isAdmin || (!useNeonDb && !user)) return;
     setSavingProgram(true);
     try {
       if (useNeonDb) {
@@ -1434,7 +1471,7 @@ export function MinistryStudioModal({
           );
         }
         onNeonDataChanged?.();
-      } else {
+      } else if (user) {
         for (const starter of STARTER_PROGRAMS) {
           const docId = generateDocumentId('prog');
           await setDoc(doc(db, 'programs', docId), {
@@ -1457,7 +1494,7 @@ export function MinistryStudioModal({
   };
 
   const handleToggleDemoPrograms = async (hide: boolean) => {
-    if (!user || !isAdmin) return;
+    if (!isAdmin || (!useNeonDb && !user)) return;
     setSavingProgram(true);
     setProgramFeedback('');
     try {
@@ -1475,7 +1512,7 @@ export function MinistryStudioModal({
   };
 
   const handleDeleteProgram = async (id: string) => {
-    if (!user || !isAdmin) return;
+    if (!isAdmin || (!useNeonDb && !user)) return;
     if (useNeonDb) {
       try {
         await postNeonAction('delete_program', { id }, user);
@@ -1486,7 +1523,7 @@ export function MinistryStudioModal({
       return;
     }
 
-    if (id.startsWith('starter-')) {
+    if (id.startsWith('starter-') && user) {
       setSavingProgram(true);
       try {
         const remaining = programs.filter((p) => p.id !== id);
@@ -1533,7 +1570,7 @@ export function MinistryStudioModal({
     nextStatus: PrayerRequestStatus,
     noteText?: string
   ) => {
-    if (!isAdmin || !user) return;
+    if (!isAdmin || (!useNeonDb && !user)) return;
     setSavingNote(true);
     const cleanNote = truncateText(
       noteText !== undefined ? noteText : req.adminNote,
@@ -1573,7 +1610,7 @@ export function MinistryStudioModal({
   };
 
   const handleDeleteRequest = async (id: string) => {
-    if (!isAdmin || !user) return;
+    if (!isAdmin || (!useNeonDb && !user)) return;
     try {
       if (useNeonDb) {
         await postNeonAction('delete_prayer_request', { id }, user);
@@ -1592,11 +1629,9 @@ export function MinistryStudioModal({
   // --- SETTINGS ---
   const handleSaveSettings = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!user || !isAdmin) return;
+    if (!isAdmin || (!useNeonDb && !user)) return;
     setSettingsFeedback('');
     setSavingSettings(true);
-
-    const payload = buildSettingsPayload(settingsForm, user.uid);
 
     try {
       if (useNeonDb) {
@@ -1606,7 +1641,8 @@ export function MinistryStudioModal({
           user
         );
         onNeonDataChanged?.();
-      } else {
+      } else if (user) {
+        const payload = buildSettingsPayload(settingsForm, user.uid);
         await setDoc(doc(db, 'ministry_settings', 'main'), payload);
       }
       setSettingsFeedback('Hero section, profile, footer & social links saved.');
@@ -1693,7 +1729,7 @@ export function MinistryStudioModal({
                 </button>
               )
             )}
-            {user && (
+            {(isAdmin || user) && (
               <button
                 type="button"
                 onClick={() => void handleSignOut()}
@@ -1718,17 +1754,31 @@ export function MinistryStudioModal({
           <div className="p-8 sm:p-12 max-w-md w-full mx-auto space-y-5">
             <div className="text-center space-y-2">
               <div className="w-12 h-12 rounded-2xl bg-[#EEF2FF] text-[#2563EB] flex items-center justify-center mx-auto">
-                <Shield className="w-6 h-6" />
+                <KeyRound className="w-6 h-6" />
               </div>
               <h3 className="text-2xl font-semibold text-[#0B0B0D]">
                 Admin Login
               </h3>
               <p className="text-sm text-[#52525B] leading-relaxed">
-                {user
-                  ? `Signed in as ${user.email || 'another account'}. Please sign in with the authorized administrator Google account to manage content and view private prayer requests.`
-                  : 'Sign in with your authorized administrator Google account to manage sermons, blog posts, programs, and prayer inbox across all deployments.'}
+                Enter your ministry admin password to manage sermons, blog posts, programs, and prayer inbox.
               </p>
             </div>
+
+            {!useNeonDb && (
+              <p className="p-3 rounded-lg text-xs text-[#92400E] bg-[#FFFBEB] border border-[#FDE68A] leading-relaxed">
+                NeonDB is not active on this host yet. Add{' '}
+                <code className="font-mono font-semibold">DATABASE_URL</code> and{' '}
+                <code className="font-mono font-semibold">ADMIN_PASSWORD</code> in your
+                Render or Vercel Environment Variables and redeploy for full single-password access.
+              </p>
+            )}
+
+            {useNeonDb && !passwordAuthConfigured && (
+              <p className="p-3 rounded-lg text-xs text-[#92400E] bg-[#FFFBEB] border border-[#FDE68A] leading-relaxed">
+                Set <code className="font-mono font-semibold">ADMIN_PASSWORD</code> in
+                your server environment variables (Render / Vercel) to enable password sign-in.
+              </p>
+            )}
 
             {authError && (
               <p className="p-3 rounded-lg text-xs text-[#991B1B] bg-[#FEF2F2] border border-[#FECACA] leading-relaxed">
@@ -1736,34 +1786,72 @@ export function MinistryStudioModal({
               </p>
             )}
 
-            <div className="space-y-3">
+            <form onSubmit={(e) => void handlePasswordSignIn(e)} className="space-y-3">
+              <div>
+                <label
+                  htmlFor="studio-admin-password"
+                  className="block text-xs font-semibold text-[#52525B] mb-1.5"
+                >
+                  Admin Password
+                </label>
+                <div className="relative">
+                  <input
+                    id="studio-admin-password"
+                    type={showAdminPassword ? 'text' : 'password'}
+                    autoComplete="current-password"
+                    required
+                    value={adminPassword}
+                    onChange={(e) => setAdminPassword(e.target.value)}
+                    placeholder="Enter admin password"
+                    className="w-full px-3.5 py-2.5 pr-10 rounded-lg text-sm bg-white border border-[#E4E4E7] text-[#0B0B0D]"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowAdminPassword((prev) => !prev)}
+                    aria-label={showAdminPassword ? 'Hide password' : 'Show password'}
+                    className="absolute right-2.5 top-1/2 -translate-y-1/2 text-[#71717A] hover:text-[#0B0B0D] cursor-pointer"
+                  >
+                    {showAdminPassword ? (
+                      <EyeOff className="w-4 h-4" />
+                    ) : (
+                      <Eye className="w-4 h-4" />
+                    )}
+                  </button>
+                </div>
+              </div>
+
               <button
-                type="button"
-                onClick={() => void handleGoogleSignIn()}
-                disabled={signingIn}
+                type="submit"
+                disabled={loggingInPassword}
                 className="w-full inline-flex items-center justify-center gap-2 px-6 py-3 rounded-lg text-sm font-semibold bg-[#0B0B0D] text-white hover:bg-[#2563EB] transition-colors cursor-pointer disabled:opacity-60"
               >
-                <LogIn className="w-4 h-4" />
-                <span>
-                  {signingIn
-                    ? 'Connecting...'
-                    : user
-                    ? 'Switch Google Account'
-                    : 'Sign in with Google'}
-                </span>
+                <KeyRound className="w-4 h-4" />
+                <span>{loggingInPassword ? 'Unlocking...' : 'Unlock Studio'}</span>
               </button>
+            </form>
 
-              {user && (
+            {!useNeonDb && (
+              <div className="pt-3 border-t border-[#E4E4E7] space-y-2">
+                <p className="text-[11px] text-center text-[#71717A]">
+                  Or sign in via Google when running in Firestore preview mode
+                </p>
                 <button
                   type="button"
-                  onClick={() => void handleSignOut()}
-                  className="w-full inline-flex items-center justify-center gap-2 px-6 py-2.5 rounded-lg text-xs font-semibold border border-[#E4E4E7] bg-white text-[#0B0B0D] hover:bg-[#F4F4F5] transition-colors cursor-pointer"
+                  onClick={() => void handleGoogleSignIn()}
+                  disabled={signingIn}
+                  className="w-full inline-flex items-center justify-center gap-2 px-5 py-2.5 rounded-lg text-xs font-semibold border border-[#E4E4E7] bg-white text-[#0B0B0D] hover:bg-[#F4F4F5] transition-colors cursor-pointer disabled:opacity-60"
                 >
-                  <LogOut className="w-3.5 h-3.5" />
-                  <span>Sign Out</span>
+                  <LogIn className="w-3.5 h-3.5" />
+                  <span>
+                    {signingIn
+                      ? 'Connecting...'
+                      : user
+                      ? 'Switch Google Account'
+                      : 'Sign in with Google'}
+                  </span>
                 </button>
-              )}
-            </div>
+              </div>
+            )}
           </div>
         ) : (
           <>
@@ -1943,6 +2031,8 @@ export function MinistryStudioModal({
                           value={coverImage}
                           onChange={setCoverImage}
                           user={user}
+                          isAdmin={isAdmin}
+                          useNeonDb={useNeonDb}
                           presets={COVER_IMAGE_PRESETS}
                           helperText="Upload a video thumbnail image from your device or choose starter artwork."
                         />
@@ -2267,6 +2357,8 @@ export function MinistryStudioModal({
                               value={encCoverImage}
                               onChange={setEncCoverImage}
                               user={user}
+                              isAdmin={isAdmin}
+                              useNeonDb={useNeonDb}
                               presets={COVER_IMAGE_PRESETS}
                               helperText="Upload an image file for this encouragement post (displayed on Home & Blog)."
                             />
@@ -2521,6 +2613,8 @@ export function MinistryStudioModal({
                               value={artCoverImage}
                               onChange={setArtCoverImage}
                               user={user}
+                              isAdmin={isAdmin}
+                              useNeonDb={useNeonDb}
                               presets={COVER_IMAGE_PRESETS}
                               helperText="Upload an image file for this faith blog article."
                             />
@@ -2889,7 +2983,9 @@ export function MinistryStudioModal({
                         Prayer Requests, Faith Questions &amp; Inquiries
                       </h3>
                       <p className="text-xs text-[#52525B]">
-                        Private inbox visible exclusively to {ADMIN_EMAIL}.
+                        {useNeonDb
+                          ? 'Private prayer requests and ministry inquiries.'
+                          : `Private inbox visible exclusively to ${ADMIN_EMAIL}.`}
                       </p>
                     </div>
                     <div className="flex items-center gap-1 p-1 rounded-xl bg-white border border-[#E4E4E7]">
@@ -3218,6 +3314,8 @@ export function MinistryStudioModal({
                         })
                       }
                       user={user}
+                      isAdmin={isAdmin}
+                      useNeonDb={useNeonDb}
                       presets={COVER_IMAGE_PRESETS}
                       helperText="Upload a portrait image from your device or select starter artwork."
                     />

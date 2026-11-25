@@ -3,6 +3,7 @@ import { User } from 'firebase/auth';
 import { getDownloadURL, ref, uploadBytes } from 'firebase/storage';
 import { Image as ImageIcon, Loader2, Trash2, Upload } from 'lucide-react';
 import { storage } from '../firebase';
+import { getStoredAdminToken, uploadImageToNeon } from '../lib/neonClient';
 import { ResilientImage } from './ResilientImage';
 
 interface ImagePreset {
@@ -15,6 +16,8 @@ interface ImageUploadFieldProps {
   value: string;
   onChange: (nextUrl: string) => void;
   user: User | null;
+  isAdmin?: boolean;
+  useNeonDb?: boolean;
   presets?: ImagePreset[];
   helperText?: string;
 }
@@ -88,6 +91,8 @@ export function ImageUploadField({
   value,
   onChange,
   user,
+  isAdmin = false,
+  useNeonDb = false,
   presets,
   helperText,
 }: ImageUploadFieldProps) {
@@ -107,7 +112,7 @@ export function ImageUploadField({
       return;
     }
 
-    if (!user) {
+    if (!isAdmin && !user) {
       setUploadError('Please sign in as admin to upload images.');
       return;
     }
@@ -116,6 +121,14 @@ export function ImageUploadField({
     try {
       const rawDataUrl = await readFileAsDataUrl(file);
       const preparedDataUrl = await compressImageIfLarge(rawDataUrl, file.type);
+
+      if (useNeonDb) {
+        const neonUrl = await uploadImageToNeon(preparedDataUrl, user);
+        onChange(neonUrl);
+        setUploadedName(file.name);
+        return;
+      }
+
       const blob = dataUrlToBlob(preparedDataUrl);
       const ext =
         blob.type === 'image/png'
@@ -126,39 +139,49 @@ export function ImageUploadField({
           ? 'gif'
           : 'jpg';
 
-      // Primary: upload directly to Firebase Storage so images sync across Vercel & all servers
-      try {
-        const safeBaseName = file.name
-          .replace(/\.[^/.]+$/, '')
-          .replace(/[^a-zA-Z0-9_-]/g, '_')
-          .slice(0, 32) || 'image';
-        const storageRef = ref(
-          storage,
-          `ministry_uploads/${Date.now()}_${safeBaseName}.${ext}`
-        );
-        await uploadBytes(storageRef, blob, { contentType: blob.type });
-        const downloadUrl = await getDownloadURL(storageRef);
-        onChange(downloadUrl);
-        setUploadedName(file.name);
-        return;
-      } catch {
-        // Fallback: use server upload endpoint if Firebase Storage rules are not enabled yet
+      if (user) {
+        // Primary in Firebase mode: upload directly to Firebase Storage
+        try {
+          const safeBaseName = file.name
+            .replace(/\.[^/.]+$/, '')
+            .replace(/[^a-zA-Z0-9_-]/g, '_')
+            .slice(0, 32) || 'image';
+          const storageRef = ref(
+            storage,
+            `ministry_uploads/${Date.now()}_${safeBaseName}.${ext}`
+          );
+          await uploadBytes(storageRef, blob, { contentType: blob.type });
+          const downloadUrl = await getDownloadURL(storageRef);
+          onChange(downloadUrl);
+          setUploadedName(file.name);
+          return;
+        } catch {
+          // Fallback: use server upload endpoint if Firebase Storage rules are not enabled yet
+        }
       }
 
-      const idToken = await user.getIdToken();
+      const headers: Record<string, string> = {
+        'Content-Type': 'application/json',
+      };
+      const sessionToken = getStoredAdminToken();
+      if (sessionToken) {
+        headers.Authorization = `Bearer ${sessionToken}`;
+      } else if (user) {
+        const idToken = await user.getIdToken();
+        headers.Authorization = `Bearer ${idToken}`;
+      }
+
       const res = await fetch('/api/admin/upload-image', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${idToken}`,
-        },
+        headers,
+        credentials: 'same-origin',
         body: JSON.stringify({ dataUrl: preparedDataUrl }),
       });
 
       const contentType = res.headers.get('content-type') || '';
       if (!contentType.includes('application/json')) {
         throw new Error(
-          'Image upload requires Firebase Storage permissions on static hosting, or select Starter Artwork.'
+          'Image upload requires server upload support or Firebase Storage, or select Starter Artwork.'
         );
       }
 
@@ -184,6 +207,7 @@ export function ImageUploadField({
 
   const isUploadedFile =
     value.startsWith('/uploads/') ||
+    value.startsWith('/api/neondb?action=media') ||
     value.includes('firebasestorage.googleapis.com') ||
     value.includes('storage.googleapis.com');
   const matchedPreset = presets?.find((p) => p.path === value);
