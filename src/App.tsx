@@ -37,7 +37,6 @@ import {
 } from './types/ministry';
 import {
   DEFAULT_MINISTRY_SETTINGS,
-  PORTRAIT_IMAGE_PATH,
   STARTER_FAITH_ARTICLES,
   STARTER_PROGRAMS,
   STARTER_SERMONS,
@@ -58,6 +57,38 @@ import { ContactPage } from './pages/ContactPage';
 
 const REACTIONS_STORAGE_KEY = 'evangelist_shepherd_reactions_v1';
 const VIEWS_SESSION_KEY = 'evangelist_shepherd_viewed_v1';
+const SETTINGS_CACHE_KEY = 'evangelist_shepherd_settings_cache_v1';
+
+function readCachedSettings(): MinistrySettings | null {
+  try {
+    const raw = localStorage.getItem(SETTINGS_CACHE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as Partial<MinistrySettings> | null;
+    if (!parsed || typeof parsed !== 'object' || !parsed.evangelistName) {
+      return null;
+    }
+    const cleanPortrait =
+      typeof parsed.portraitUrl === 'string' &&
+      !parsed.portraitUrl.startsWith('/src/assets/images/')
+        ? parsed.portraitUrl
+        : '';
+    return {
+      ...DEFAULT_MINISTRY_SETTINGS,
+      ...parsed,
+      portraitUrl: cleanPortrait,
+    };
+  } catch {
+    return null;
+  }
+}
+
+function writeCachedSettings(next: MinistrySettings): void {
+  try {
+    localStorage.setItem(SETTINGS_CACHE_KEY, JSON.stringify(next));
+  } catch {
+    // ignore storage quota errors
+  }
+}
 
 interface EngagementMetricOffsets {
   viewCount: number;
@@ -96,8 +127,14 @@ function EvangelistShepherdApp() {
   const [firestorePrograms, setFirestorePrograms] = useState<MinistryProgram[]>([]);
   const [programsLoaded, setProgramsLoaded] = useState(false);
 
+  const [initialCachedSettings] = useState<MinistrySettings | null>(() =>
+    readCachedSettings()
+  );
   const [settings, setSettings] = useState<MinistrySettings>(
-    DEFAULT_MINISTRY_SETTINGS
+    () => initialCachedSettings || DEFAULT_MINISTRY_SETTINGS
+  );
+  const [settingsLoaded, setSettingsLoaded] = useState<boolean>(
+    () => Boolean(initialCachedSettings)
   );
 
   const [activeSermon, setActiveSermon] = useState<Sermon | null>(null);
@@ -172,10 +209,19 @@ function EvangelistShepherdApp() {
       setNeonAdminSession(Boolean(data.isAdminSession));
       if (!data.enabled) return;
       if (data.settings) {
-        const nextSettings = data.settings;
+        const nextSettings: MinistrySettings = {
+          ...data.settings,
+          portraitUrl:
+            data.settings.portraitUrl &&
+            !data.settings.portraitUrl.startsWith('/src/assets/images/')
+              ? data.settings.portraitUrl
+              : '',
+        };
         setSettings((prev) =>
           JSON.stringify(prev) === JSON.stringify(nextSettings) ? prev : nextSettings
         );
+        setSettingsLoaded(true);
+        writeCachedSettings(nextSettings);
       }
       if (Array.isArray(data.sermons)) {
         const sortedSermons = [...data.sermons].sort(
@@ -205,30 +251,45 @@ function EvangelistShepherdApp() {
     []
   );
 
-  const syncNeonData = useCallback(async () => {
-    const seq = ++syncSeqRef.current;
-    const data = await fetchNeonBootstrap(user);
-    if (seq !== syncSeqRef.current) {
+  const userRef = useRef<User | null>(user);
+  userRef.current = user;
+
+  const syncNeonData = useCallback(
+    async (overrideUser?: User | null) => {
+      const seq = ++syncSeqRef.current;
+      const targetUser = overrideUser !== undefined ? overrideUser : userRef.current;
+      const data = await fetchNeonBootstrap(targetUser);
+      if (seq !== syncSeqRef.current) {
+        return data.enabled;
+      }
+      applyNeonSnapshot(data);
       return data.enabled;
-    }
-    applyNeonSnapshot(data);
-    return data.enabled;
-  }, [applyNeonSnapshot, user]);
+    },
+    [applyNeonSnapshot]
+  );
 
   useEffect(() => {
-    if (!authReady) return;
     let cancelled = false;
     const initBackend = async () => {
-      const enabled = await syncNeonData();
+      const enabled = await syncNeonData(null);
       if (!cancelled) {
         setDbMode(enabled ? 'neon' : 'firestore');
+        if (enabled) {
+          setSettingsLoaded(true);
+        }
       }
     };
     void initBackend();
     return () => {
       cancelled = true;
     };
-  }, [authReady, syncNeonData]);
+  }, [syncNeonData]);
+
+  useEffect(() => {
+    if (dbMode === 'neon' && user) {
+      void syncNeonData(user);
+    }
+  }, [dbMode, user, syncNeonData]);
 
   useEffect(() => {
     if (dbMode !== 'neon' || studioOpen) return;
@@ -246,7 +307,8 @@ function EvangelistShepherdApp() {
       (snap) => {
         if (snap.exists()) {
           const d = snap.data();
-          setSettings({
+          const rawPortrait = typeof d.portraitUrl === 'string' ? d.portraitUrl : '';
+          const nextSettings: MinistrySettings = {
             evangelistName:
               d.evangelistName || DEFAULT_MINISTRY_SETTINGS.evangelistName,
             heroEyebrow:
@@ -260,7 +322,7 @@ function EvangelistShepherdApp() {
               d.heroSecondaryCtaLabel ||
               DEFAULT_MINISTRY_SETTINGS.heroSecondaryCtaLabel,
             aboutBio: d.aboutBio || DEFAULT_MINISTRY_SETTINGS.aboutBio,
-            portraitUrl: d.portraitUrl || PORTRAIT_IMAGE_PATH,
+            portraitUrl: rawPortrait.startsWith('/src/assets/images/') ? '' : rawPortrait,
             weeklyVerse: d.weeklyVerse || DEFAULT_MINISTRY_SETTINGS.weeklyVerse,
             weeklyVerseRef:
               d.weeklyVerseRef || DEFAULT_MINISTRY_SETTINGS.weeklyVerseRef,
@@ -290,10 +352,14 @@ function EvangelistShepherdApp() {
             xUrl: d.xUrl ?? DEFAULT_MINISTRY_SETTINGS.xUrl,
             whatsappUrl: d.whatsappUrl ?? DEFAULT_MINISTRY_SETTINGS.whatsappUrl,
             podcastUrl: d.podcastUrl ?? DEFAULT_MINISTRY_SETTINGS.podcastUrl,
-          });
+          };
+          setSettings(nextSettings);
+          writeCachedSettings(nextSettings);
         }
+        setSettingsLoaded(true);
       },
       (error) => {
+        setSettingsLoaded(true);
         handleFirestoreError(error, OperationType.GET, path);
       }
     );
@@ -756,6 +822,7 @@ function EvangelistShepherdApp() {
         {currentPage === 'home' && (
           <HomePage
             settings={settings}
+            settingsLoaded={settingsLoaded}
             encouragements={encouragements}
             latestMidweek={latestMidweek}
             articles={publishedArticles}
@@ -773,6 +840,7 @@ function EvangelistShepherdApp() {
         {currentPage === 'about' && (
           <AboutPage
             settings={settings}
+            settingsLoaded={settingsLoaded}
             programs={activePrograms}
             latestMidweek={latestMidweek}
             isAdmin={isAdmin}
@@ -909,6 +977,8 @@ function EvangelistShepherdApp() {
         onSettingsUpdated={(nextSettings) => {
           syncSeqRef.current += 1;
           setSettings(nextSettings);
+          setSettingsLoaded(true);
+          writeCachedSettings(nextSettings);
         }}
         sermons={firestoreSermons.length > 0 ? firestoreSermons : publishedPosts}
         hasFirestoreSermons={firestoreSermons.length > 0}

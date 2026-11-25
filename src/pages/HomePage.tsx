@@ -7,7 +7,6 @@ import {
   ReactionType,
   Sermon,
 } from '../types/ministry';
-import { PORTRAIT_IMAGE_PATH } from '../data/defaultMinistryData';
 import { ResilientImage } from '../components/ResilientImage';
 import { EncouragementPostCard } from '../components/EncouragementPostCard';
 import { ProgramsSection } from '../components/ProgramsSection';
@@ -16,6 +15,7 @@ import { WeeklyScriptureCarousel } from '../components/WeeklyScriptureCarousel';
 
 interface HomePageProps {
   settings: MinistrySettings;
+  settingsLoaded?: boolean;
   encouragements: Sermon[];
   latestMidweek: Sermon | null;
   articles: FaithArticle[];
@@ -31,6 +31,7 @@ interface HomePageProps {
 
 export function HomePage({
   settings,
+  settingsLoaded = true,
   encouragements,
   latestMidweek,
   articles,
@@ -102,12 +103,19 @@ export function HomePage({
           {/* Right Column: Evangelist Shepherd Portrait */}
           <div className="col-span-5 relative flex flex-col">
             <div className="relative flex-1 min-h-[200px] sm:min-h-[340px] lg:min-h-[440px] rounded-none overflow-hidden border border-[#E4E4E7] bg-[#F4F4F5]">
-              <ResilientImage
-                src={settings.portraitUrl || PORTRAIT_IMAGE_PATH}
-                alt="Portrait of Evangelist Shepherd"
-                className="w-full h-full object-cover object-top"
-                fallbackTitle="Evangelist Shepherd"
-              />
+              {!settingsLoaded ? (
+                <div
+                  className="w-full h-full bg-[#F4F4F5] animate-pulse"
+                  aria-label="Loading portrait"
+                />
+              ) : (
+                <ResilientImage
+                  src={settings.portraitUrl}
+                  alt="Portrait of Evangelist Shepherd"
+                  className="w-full h-full object-cover object-top"
+                  fallbackTitle="Evangelist Shepherd"
+                />
+              )}
             </div>
           </div>
         </div>

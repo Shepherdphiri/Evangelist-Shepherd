@@ -5,16 +5,13 @@ import {
   PageRoute,
   Sermon,
 } from '../types/ministry';
-import {
-  ABSTRACT_ART_PATH,
-  PORTRAIT_IMAGE_PATH,
-} from '../data/defaultMinistryData';
 import { ResilientImage } from '../components/ResilientImage';
 import { ProgramsSection } from '../components/ProgramsSection';
 import { SocialPortalsSection } from '../components/SocialPortalsSection';
 
 interface AboutPageProps {
   settings: MinistrySettings;
+  settingsLoaded?: boolean;
   programs: MinistryProgram[];
   latestMidweek: Sermon | null;
   isAdmin: boolean;
@@ -49,6 +46,7 @@ const CORE_PILLARS = [
 
 export function AboutPage({
   settings,
+  settingsLoaded = true,
   programs,
   latestMidweek,
   isAdmin,
@@ -62,12 +60,19 @@ export function AboutPage({
       {/* Intro Split */}
       <section className="grid grid-cols-1 lg:grid-cols-12 gap-6 lg:gap-10 items-stretch">
         <div className="lg:col-span-5 rounded-none overflow-hidden border border-[#E4E4E7] bg-[#F4F4F5] min-h-[300px] sm:min-h-[360px]">
-          <ResilientImage
-            src={settings.portraitUrl || PORTRAIT_IMAGE_PATH}
-            alt="Evangelist Shepherd Portrait"
-            className="w-full h-full object-cover object-top"
-            fallbackTitle="Evangelist Shepherd"
-          />
+          {!settingsLoaded ? (
+            <div
+              className="w-full h-full bg-[#F4F4F5] animate-pulse"
+              aria-label="Loading portrait"
+            />
+          ) : (
+            <ResilientImage
+              src={settings.portraitUrl}
+              alt="Evangelist Shepherd Portrait"
+              className="w-full h-full object-cover object-top"
+              fallbackTitle="Evangelist Shepherd"
+            />
+          )}
         </div>
 
         <div className="lg:col-span-7 bg-white border border-[#E4E4E7] rounded-none p-5 sm:p-9 flex flex-col justify-between space-y-6 text-center lg:text-left">
@@ -125,12 +130,25 @@ export function AboutPage({
           ))}
         </div>
 
-        <div className="lg:col-span-5 rounded-none overflow-hidden border border-[#E4E4E7] bg-[#F4F4F5] min-h-[240px]">
-          <ResilientImage
-            src={ABSTRACT_ART_PATH}
-            alt="Abstract light and architectural geometry"
-            fallbackTitle="Ministry Vision"
-          />
+        <div className="lg:col-span-5 relative rounded-none overflow-hidden border border-[#E4E4E7] bg-[#0B0B0D] text-white p-7 sm:p-9 flex flex-col justify-between min-h-[240px]">
+          <svg
+            aria-hidden="true"
+            viewBox="0 0 240 240"
+            className="pointer-events-none absolute -bottom-10 -right-10 w-48 h-48 text-[#2563EB]/20"
+            fill="none"
+          >
+            <circle cx="120" cy="120" r="90" stroke="currentColor" strokeWidth="1.5" />
+            <circle cx="120" cy="120" r="52" stroke="currentColor" strokeWidth="1.5" />
+          </svg>
+          <p className="text-xs uppercase tracking-[0.2em] text-[#60A5FA] font-semibold">
+            Ministry Vision · 2 Corinthians 4:5
+          </p>
+          <blockquote className="relative z-10 text-lg sm:text-xl font-medium leading-relaxed text-white my-6">
+            &ldquo;For what we proclaim is not ourselves, but Jesus Christ as Lord, with ourselves as your servants for Jesus&rsquo; sake.&rdquo;
+          </blockquote>
+          <p className="relative z-10 text-xs text-[#A1A1AA]">
+            Rooted in Scripture · Built for Discipleship &amp; Prayer
+          </p>
         </div>
       </section>
 

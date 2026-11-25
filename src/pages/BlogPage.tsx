@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { ArrowRight, Eye, MessageSquare, Search } from 'lucide-react';
+import { ArrowRight, Eye, MessageSquare, Search, X } from 'lucide-react';
 import {
   FaithArticle,
   ReactionType,
@@ -40,6 +40,7 @@ export function BlogPage({
       return (
         item.title.toLowerCase().includes(q) ||
         item.scriptureRef.toLowerCase().includes(q) ||
+        item.scriptureQuote.toLowerCase().includes(q) ||
         item.summary.toLowerCase().includes(q) ||
         item.content.toLowerCase().includes(q)
       );
@@ -55,7 +56,8 @@ export function BlogPage({
         a.questionPrompt.toLowerCase().includes(q) ||
         a.topic.toLowerCase().includes(q) ||
         a.scriptureRef.toLowerCase().includes(q) ||
-        a.excerpt.toLowerCase().includes(q)
+        a.excerpt.toLowerCase().includes(q) ||
+        a.content.toLowerCase().includes(q)
       );
     });
   }, [articles, sectionFilter, q]);
@@ -111,18 +113,38 @@ export function BlogPage({
           ))}
         </div>
 
-        <div className="relative w-full max-w-sm md:w-64">
+        <div className="relative w-full max-w-sm md:w-80">
           <Search className="w-4 h-4 text-[#71717A] absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
           <input
-            type="search"
+            type="text"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            placeholder="Search encouragement or faith topic..."
-            aria-label="Search blog posts"
-            className="w-full pl-9 pr-3 py-2 rounded-lg text-sm bg-white border border-[#E4E4E7] text-[#0B0B0D] placeholder:text-[#A1A1AA] focus:outline-none focus:border-[#2563EB]"
+            placeholder="Search posts by title, topic, or keyword..."
+            aria-label="Search blog posts by title or keyword"
+            className="w-full pl-9 pr-9 py-2.5 rounded-lg text-sm bg-white border border-[#E4E4E7] text-[#0B0B0D] placeholder:text-[#A1A1AA] focus:outline-none focus:border-[#2563EB]"
           />
+          {searchQuery && (
+            <button
+              type="button"
+              onClick={() => setSearchQuery('')}
+              aria-label="Clear blog search"
+              className="absolute right-2.5 top-1/2 -translate-y-1/2 p-1 rounded text-[#71717A] hover:text-[#0B0B0D] cursor-pointer"
+            >
+              <X className="w-3.5 h-3.5" />
+            </button>
+          )}
         </div>
       </div>
+
+      {q && (filteredEncouragements.length > 0 || filteredArticles.length > 0) && (
+        <p className="text-xs text-[#52525B]">
+          Showing {filteredEncouragements.length + filteredArticles.length}{' '}
+          {filteredEncouragements.length + filteredArticles.length === 1
+            ? 'post'
+            : 'posts'}{' '}
+          for &ldquo;{searchQuery.trim()}&rdquo;
+        </p>
+      )}
 
       {/* Words of Encouragement Full Posts */}
       {filteredEncouragements.length > 0 && (

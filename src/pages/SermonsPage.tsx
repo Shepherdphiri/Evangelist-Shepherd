@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { Eye, Play, Search } from 'lucide-react';
+import { Eye, Play, Search, X } from 'lucide-react';
 import {
   Sermon,
   formatDateValue,
@@ -25,7 +25,9 @@ export function SermonsPage({
           (s) =>
             s.title.toLowerCase().includes(q) ||
             s.scriptureRef.toLowerCase().includes(q) ||
-            s.summary.toLowerCase().includes(q)
+            s.scriptureQuote.toLowerCase().includes(q) ||
+            s.summary.toLowerCase().includes(q) ||
+            s.content.toLowerCase().includes(q)
         )
       : youtubeSermons;
 
@@ -50,18 +52,36 @@ export function SermonsPage({
           </p>
         </div>
 
-        <div className="relative w-full max-w-sm lg:w-72">
+        <div className="relative w-full max-w-sm lg:w-80">
           <Search className="w-4 h-4 text-[#71717A] absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
           <input
-            type="search"
+            type="text"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            placeholder="Search sermons..."
-            aria-label="Search sermons"
-            className="w-full pl-9 pr-3 py-2 rounded-lg text-sm bg-white border border-[#E4E4E7] text-[#0B0B0D] placeholder:text-[#A1A1AA] focus:outline-none focus:border-[#2563EB]"
+            placeholder="Search sermons by title or keyword..."
+            aria-label="Search sermons by title or keyword"
+            className="w-full pl-9 pr-9 py-2.5 rounded-lg text-sm bg-white border border-[#E4E4E7] text-[#0B0B0D] placeholder:text-[#A1A1AA] focus:outline-none focus:border-[#2563EB]"
           />
+          {searchQuery && (
+            <button
+              type="button"
+              onClick={() => setSearchQuery('')}
+              aria-label="Clear sermon search"
+              className="absolute right-2.5 top-1/2 -translate-y-1/2 p-1 rounded text-[#71717A] hover:text-[#0B0B0D] cursor-pointer"
+            >
+              <X className="w-3.5 h-3.5" />
+            </button>
+          )}
         </div>
       </div>
+
+      {searchQuery.trim() && sortedSermons.length > 0 && (
+        <p className="text-xs text-[#52525B]">
+          Showing {sortedSermons.length}{' '}
+          {sortedSermons.length === 1 ? 'sermon' : 'sermons'} for &ldquo;
+          {searchQuery.trim()}&rdquo;
+        </p>
+      )}
 
       {sortedSermons.length === 0 ? (
         <div className="bg-white border border-[#E4E4E7] rounded-none p-8 sm:p-10 text-center space-y-3">

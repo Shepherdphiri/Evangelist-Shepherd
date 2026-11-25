@@ -54,7 +54,6 @@ import {
   truncateText,
 } from '../types/ministry';
 import {
-  COVER_IMAGE_PRESETS,
   DEFAULT_MINISTRY_SETTINGS,
   STARTER_FAITH_ARTICLES,
   STARTER_PROGRAMS,
@@ -126,7 +125,7 @@ export function MinistryStudioModal({
   const [summary, setSummary] = useState('');
   const [content, setContent] = useState('');
   const [readTimeMinutes, setReadTimeMinutes] = useState(3);
-  const [coverImage, setCoverImage] = useState(COVER_IMAGE_PRESETS[2].path);
+  const [coverImage, setCoverImage] = useState('');
   const [videoUrl, setVideoUrl] = useState('');
   const [isFeatured, setIsFeatured] = useState(false);
   const [isPublished, setIsPublished] = useState(true);
@@ -145,7 +144,7 @@ export function MinistryStudioModal({
   const [encSummary, setEncSummary] = useState('');
   const [encContent, setEncContent] = useState('');
   const [encReadTime, setEncReadTime] = useState(2);
-  const [encCoverImage, setEncCoverImage] = useState(COVER_IMAGE_PRESETS[3].path);
+  const [encCoverImage, setEncCoverImage] = useState('');
   const [encPublished, setEncPublished] = useState(true);
   const [savingEnc, setSavingEnc] = useState(false);
   const [encFeedback, setEncFeedback] = useState('');
@@ -159,7 +158,7 @@ export function MinistryStudioModal({
   const [artRef, setArtRef] = useState('');
   const [artExcerpt, setArtExcerpt] = useState('');
   const [artContent, setArtContent] = useState('');
-  const [artCoverImage, setArtCoverImage] = useState(COVER_IMAGE_PRESETS[4].path);
+  const [artCoverImage, setArtCoverImage] = useState('');
   const [artReadTime, setArtReadTime] = useState(4);
   const [artPublished, setArtPublished] = useState(true);
   const [savingArticle, setSavingArticle] = useState(false);
@@ -566,7 +565,7 @@ export function MinistryStudioModal({
     setSummary('');
     setContent('');
     setReadTimeMinutes(3);
-    setCoverImage(COVER_IMAGE_PRESETS[0].path);
+    setCoverImage('');
     setVideoUrl('');
     setIsFeatured(false);
     setIsPublished(true);
@@ -582,7 +581,7 @@ export function MinistryStudioModal({
     setSummary(s.summary);
     setContent(s.content);
     setReadTimeMinutes(s.readTimeMinutes || 3);
-    setCoverImage(s.coverImage || COVER_IMAGE_PRESETS[0].path);
+    setCoverImage(s.coverImage || '');
     setVideoUrl(s.videoUrl || '');
     setIsFeatured(s.isFeatured);
     setIsPublished(s.isPublished);
@@ -884,7 +883,7 @@ export function MinistryStudioModal({
     setEncSummary('');
     setEncContent('');
     setEncReadTime(2);
-    setEncCoverImage(COVER_IMAGE_PRESETS[3].path);
+    setEncCoverImage('');
     setEncPublished(true);
     setEncFeedback('');
   };
@@ -897,7 +896,7 @@ export function MinistryStudioModal({
     setEncSummary(s.summary);
     setEncContent(s.content);
     setEncReadTime(s.readTimeMinutes || 2);
-    setEncCoverImage(s.coverImage || COVER_IMAGE_PRESETS[3].path);
+    setEncCoverImage(s.coverImage || '');
     setEncPublished(s.isPublished);
     setEncFeedback('');
     setShowEncForm(true);
@@ -1081,7 +1080,7 @@ export function MinistryStudioModal({
     setArtRef('');
     setArtExcerpt('');
     setArtContent('');
-    setArtCoverImage(COVER_IMAGE_PRESETS[4].path);
+    setArtCoverImage('');
     setArtReadTime(4);
     setArtPublished(true);
     setArticleFeedback('');
@@ -2062,8 +2061,7 @@ export function MinistryStudioModal({
                           user={user}
                           isAdmin={isAdmin}
                           useNeonDb={useNeonDb}
-                          presets={COVER_IMAGE_PRESETS}
-                          helperText="Upload a video thumbnail image from your device or choose starter artwork."
+                          helperText="Upload a video thumbnail image from your device."
                         />
 
                         <div>
@@ -2388,7 +2386,6 @@ export function MinistryStudioModal({
                               user={user}
                               isAdmin={isAdmin}
                               useNeonDb={useNeonDb}
-                              presets={COVER_IMAGE_PRESETS}
                               helperText="Upload an image file for this encouragement post (displayed on Home & Blog)."
                             />
 
@@ -2644,7 +2641,6 @@ export function MinistryStudioModal({
                               user={user}
                               isAdmin={isAdmin}
                               useNeonDb={useNeonDb}
-                              presets={COVER_IMAGE_PRESETS}
                               helperText="Upload an image file for this faith blog article."
                             />
 
@@ -3336,8 +3332,7 @@ export function MinistryStudioModal({
                       user={user}
                       isAdmin={isAdmin}
                       useNeonDb={useNeonDb}
-                      presets={COVER_IMAGE_PRESETS}
-                      helperText="Upload a portrait image from your device or select starter artwork, then click Save Settings."
+                      helperText="Upload your Hero Portrait image from your device, then click Save Changes."
                     />
 
                     <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">

@@ -15,9 +15,11 @@ export function ResilientImage({
   fallbackTitle,
 }: ResilientImageProps) {
   const [hasError, setHasError] = useState(false);
+  const [loaded, setLoaded] = useState(false);
 
   useEffect(() => {
     setHasError(false);
+    setLoaded(false);
   }, [src]);
 
   if (!src || hasError) {
@@ -42,8 +44,9 @@ export function ResilientImage({
       src={src}
       alt={alt}
       referrerPolicy="no-referrer"
+      onLoad={() => setLoaded(true)}
       onError={() => setHasError(true)}
-      className={className}
+      className={`${className} transition-opacity duration-200 ${loaded ? 'opacity-100' : 'opacity-0'}`}
     />
   );
 }

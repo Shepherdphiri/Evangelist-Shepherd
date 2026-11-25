@@ -1,38 +1,9 @@
-export const PORTRAIT_IMAGE_PATH =
-  '/src/assets/images/hero_evangelist_portrait_1795509039824.jpg';
-export const ABSTRACT_ART_PATH =
-  '/src/assets/images/abstract_faith_geometry_1795509039152.jpg';
-export const SERMON_STUDIO_PATH =
-  '/src/assets/images/sermon_studio_mic_1795509039156.jpg';
-export const PRAYER_IMAGE_PATH =
-  '/src/assets/images/prayer_sanctuary_light_1795507302282.jpg';
+export const PORTRAIT_IMAGE_PATH = '';
+export const ABSTRACT_ART_PATH = '';
+export const SERMON_STUDIO_PATH = '';
+export const PRAYER_IMAGE_PATH = '';
 
-export const COVER_IMAGE_PRESETS = [
-  {
-    label: 'Evangelist Portrait (Default)',
-    path: '/src/assets/images/hero_evangelist_portrait_1795509039824.jpg',
-  },
-  {
-    label: 'Abstract Light Architecture',
-    path: '/src/assets/images/abstract_faith_geometry_1795509039152.jpg',
-  },
-  {
-    label: 'Ministry Broadcast Studio',
-    path: '/src/assets/images/sermon_studio_mic_1795509039156.jpg',
-  },
-  {
-    label: 'Morning Sunrise Over Hills',
-    path: '/src/assets/images/sermon_morning_grace_1795507301464.jpg',
-  },
-  {
-    label: 'Open Study Bible',
-    path: '/src/assets/images/sermon_open_scripture_1795507302615.jpg',
-  },
-  {
-    label: 'Quiet Prayer Sanctuary',
-    path: '/src/assets/images/prayer_sanctuary_light_1795507302282.jpg',
-  },
-];
+export const COVER_IMAGE_PRESETS: Array<{ label: string; path: string }> = [];
 
 export const DEFAULT_MINISTRY_SETTINGS_DATA = {
   evangelistName: 'EVANGELIST SHEPHERD',
@@ -43,7 +14,7 @@ export const DEFAULT_MINISTRY_SETTINGS_DATA = {
   heroSecondaryCtaLabel: 'Answers About Faith',
   aboutBio:
     'Evangelist Shepherd (Shepherd Zisper Phiri) is a Gospel preacher and teacher of Scripture dedicated to sharing the hope, salvation, and everyday grace found in Jesus Christ. Through video sermons, daily devotional notes, and biblical Q&A teachings, this ministry walks alongside believers and seekers across nations.',
-  portraitUrl: PORTRAIT_IMAGE_PATH,
+  portraitUrl: '',
   weeklyVerse:
     'Your word is a lamp to my feet and a light to my path.',
   weeklyVerseRef: 'Psalm 119:105',
@@ -103,7 +74,7 @@ Three daily rhythms keep your heart anchored in His light:
 2. Pray honestly about the exact challenges waiting on your schedule today.
 3. Choose obedience in the next small step God places right in front of you.`,
     readTimeMinutes: 4,
-    coverImage: SERMON_STUDIO_PATH,
+    coverImage: '',
     videoUrl: 'https://www.youtube.com/@YouTube',
     isFeatured: true,
     isPublished: true,
@@ -127,7 +98,7 @@ When plans fall apart or energy runs dry, grace is not merely pardon for yesterd
 
 Hold steady today. The same Savior who carried the cross is carrying you through this season.`,
     readTimeMinutes: 2,
-    coverImage: '/src/assets/images/sermon_morning_grace_1795507301464.jpg',
+    coverImage: '',
     videoUrl: '',
     isFeatured: false,
     isPublished: true,
@@ -151,7 +122,7 @@ Paul describes God's peace as a sentry standing guard over both heart and mind. 
 
 Whenever anxious thoughts return today, turn each concern into a direct prayer and thank God in advance for His steady care.`,
     readTimeMinutes: 3,
-    coverImage: PRAYER_IMAGE_PATH,
+    coverImage: '',
     videoUrl: 'https://www.youtube.com',
     isFeatured: false,
     isPublished: true,
@@ -173,7 +144,7 @@ Whenever anxious thoughts return today, turn each concern into a direct prayer a
 
 When regret speaks loudly, answer it with Romans 8. Run toward the Father in repentance and worship, knowing His arms are open and His grace is greater than every fear.`,
     readTimeMinutes: 2,
-    coverImage: ABSTRACT_ART_PATH,
+    coverImage: '',
     videoUrl: '',
     isFeatured: false,
     isPublished: true,
@@ -195,7 +166,7 @@ When regret speaks loudly, answer it with Romans 8. Run toward the Father in rep
 
 Expectant faith does not dictate timelines to God—it trusts His goodness completely while refusing to quit praying. Watch this midweek message and take a quiet moment to bring your family, calling, and community before the Lord.`,
     readTimeMinutes: 4,
-    coverImage: SERMON_STUDIO_PATH,
+    coverImage: '',
     videoUrl: 'https://www.youtube.com',
     isFeatured: true,
     isPublished: true,
@@ -237,7 +208,7 @@ When doubt whispers, look outward to Christ rather than inward at your perfectio
 1. Did Jesus pay the full debt of sin on the cross? Yes—"It is finished" (John 19:30).
 2. Have you turned from sin and trusted Him as Lord and Savior? Then Romans 10:9–13 promises He receives you without hesitation.
 3. As you grow, the Holy Spirit transforms your desires, teaching you to walk in repentance, love, and obedience out of gratitude.`,
-    coverImage: '/src/assets/images/sermon_open_scripture_1795507302615.jpg',
+    coverImage: '',
     readTimeMinutes: 4,
     viewCount: 0,
     isPublished: true,
@@ -258,7 +229,7 @@ During waiting seasons:
 - Keep praying honestly instead of withdrawing in silence.
 - Anchor your expectations in God's wisdom and timing rather than panic.
 - Look for daily faithfulness in serving, forgiving, and reading Scripture while God works behind the scenes.`,
-    coverImage: PRAYER_IMAGE_PATH,
+    coverImage: '',
     readTimeMinutes: 4,
     viewCount: 0,
     isPublished: true,
@@ -278,7 +249,7 @@ Start with four foundational steps:
 2. Talk With God Often: Pray naturally throughout your day—sharing gratitude, needs, and confession.
 3. Join a Bible-Believing Church: God designed believers to grow in community, worship, and accountability.
 4. Share Your Faith With Grace: Tell family and friends what Jesus has done in your life.`,
-    coverImage: '/src/assets/images/sermon_morning_grace_1795507301464.jpg',
+    coverImage: '',
     readTimeMinutes: 3,
     viewCount: 0,
     isPublished: true,

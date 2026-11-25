@@ -9,8 +9,6 @@ import {
   truncateText,
 } from '../types/ministry';
 import { postNeonAction } from '../lib/neonClient';
-import { ABSTRACT_ART_PATH } from '../data/defaultMinistryData';
-import { ResilientImage } from './ResilientImage';
 
 const REQUEST_TYPES: PrayerRequestType[] = [
   'Prayer Request',
@@ -145,12 +143,13 @@ export function PrayerContactSection({
           </p>
         </div>
 
-        <div className="aspect-[16/10] w-full overflow-hidden rounded-none border border-[#E4E4E7] bg-[#F4F4F5]">
-          <ResilientImage
-            src={ABSTRACT_ART_PATH}
-            alt="Minimalist architectural geometry bathed in natural light"
-            fallbackTitle="Prayer & Ministry Desk"
-          />
+        <div className="p-6 sm:p-7 rounded-none border border-[#E4E4E7] bg-white space-y-2.5 text-center lg:text-left">
+          <p className="text-xs uppercase tracking-widest text-[#2563EB] font-semibold">
+            Philippians 4:6–7
+          </p>
+          <p className="text-sm sm:text-base italic text-[#27272A] leading-relaxed">
+            &ldquo;Do not be anxious about anything, but in everything by prayer and supplication with thanksgiving let your requests be made known to God.&rdquo;
+          </p>
         </div>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-1">

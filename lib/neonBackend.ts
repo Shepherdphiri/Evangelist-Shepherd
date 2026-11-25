@@ -297,6 +297,22 @@ async function ensureSchemaAndSeed(sql: SqlClient): Promise<void> {
           ON CONFLICT (id) DO NOTHING
         `;
         await seedFreshContent(sql, 'evangelist-shepherd');
+      } else {
+        await sql`
+          UPDATE ministry_settings
+          SET portrait_url = ''
+          WHERE id = 'main' AND portrait_url LIKE '/src/assets/images/%'
+        `;
+        await sql`
+          UPDATE sermons
+          SET cover_image = ''
+          WHERE cover_image LIKE '/src/assets/images/%'
+        `;
+        await sql`
+          UPDATE faith_articles
+          SET cover_image = ''
+          WHERE cover_image LIKE '/src/assets/images/%'
+        `;
       }
     })().catch((err) => {
       schemaInitPromise = null;
@@ -372,7 +388,10 @@ function mapSermonRow(r: Record<string, unknown>) {
     summary: String(r.summary || ''),
     content: String(r.content || ''),
     readTimeMinutes: Number(r.read_time_minutes) || 3,
-    coverImage: String(r.cover_image || ''),
+    coverImage:
+      typeof r.cover_image === 'string' && !r.cover_image.startsWith('/src/assets/images/')
+        ? r.cover_image
+        : '',
     videoUrl: String(r.video_url || ''),
     isFeatured: Boolean(r.is_featured),
     isPublished: Boolean(r.is_published),
@@ -396,7 +415,10 @@ function mapArticleRow(r: Record<string, unknown>) {
     scriptureRef: String(r.scripture_ref || ''),
     excerpt: String(r.excerpt || ''),
     content: String(r.content || ''),
-    coverImage: String(r.cover_image || ''),
+    coverImage:
+      typeof r.cover_image === 'string' && !r.cover_image.startsWith('/src/assets/images/')
+        ? r.cover_image
+        : '',
     readTimeMinutes: Number(r.read_time_minutes) || 4,
     viewCount: Number(r.view_count) || 0,
     isPublished: Boolean(r.is_published),
@@ -425,6 +447,10 @@ function mapProgramRow(r: Record<string, unknown>) {
 
 function mapSettingsRow(r: Record<string, unknown> | undefined) {
   if (!r) return DEFAULT_MINISTRY_SETTINGS_DATA;
+  const rawPortrait =
+    r.portrait_url !== undefined && r.portrait_url !== null
+      ? String(r.portrait_url)
+      : '';
   return {
     evangelistName: String(r.evangelist_name || DEFAULT_MINISTRY_SETTINGS_DATA.evangelistName),
     heroEyebrow: String(r.hero_eyebrow || DEFAULT_MINISTRY_SETTINGS_DATA.heroEyebrow),
@@ -432,10 +458,7 @@ function mapSettingsRow(r: Record<string, unknown> | undefined) {
     heroPrimaryCtaLabel: String(r.hero_primary_cta_label || DEFAULT_MINISTRY_SETTINGS_DATA.heroPrimaryCtaLabel),
     heroSecondaryCtaLabel: String(r.hero_secondary_cta_label || DEFAULT_MINISTRY_SETTINGS_DATA.heroSecondaryCtaLabel),
     aboutBio: String(r.about_bio || DEFAULT_MINISTRY_SETTINGS_DATA.aboutBio),
-    portraitUrl:
-      r.portrait_url !== undefined && r.portrait_url !== null
-        ? String(r.portrait_url)
-        : DEFAULT_MINISTRY_SETTINGS_DATA.portraitUrl,
+    portraitUrl: rawPortrait.startsWith('/src/assets/images/') ? '' : rawPortrait,
     weeklyVerse: String(r.weekly_verse || DEFAULT_MINISTRY_SETTINGS_DATA.weeklyVerse),
     weeklyVerseRef: String(r.weekly_verse_ref || DEFAULT_MINISTRY_SETTINGS_DATA.weeklyVerseRef),
     contactEmail: String(r.contact_email ?? ''),
