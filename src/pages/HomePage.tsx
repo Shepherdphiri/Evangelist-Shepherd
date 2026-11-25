@@ -17,13 +17,11 @@ interface HomePageProps {
   settings: MinistrySettings;
   settingsLoaded?: boolean;
   encouragements: Sermon[];
-  latestMidweek: Sermon | null;
   articles: FaithArticle[];
   programs: MinistryProgram[];
   reactedKeys: Record<string, boolean>;
   onReact: (post: Sermon, reaction: ReactionType) => void;
   onOpenEncouragementInBlog: (post: Sermon) => void;
-  onOpenMidweekNotes: (sermon: Sermon) => void;
   onReadArticle: (article: FaithArticle) => void;
   onNavigate: (page: PageRoute) => void;
   onInquireProgram: (programTitle: string) => void;
@@ -33,13 +31,11 @@ export function HomePage({
   settings,
   settingsLoaded = true,
   encouragements,
-  latestMidweek,
   articles,
   programs,
   reactedKeys,
   onReact,
   onOpenEncouragementInBlog,
-  onOpenMidweekNotes,
   onReadArticle,
   onNavigate,
   onInquireProgram,
@@ -129,7 +125,7 @@ export function HomePage({
         <div className="pb-5 sm:pb-6 text-center md:text-left">
           <div className="max-w-2xl space-y-1 mx-auto md:mx-0">
             <p className="text-[11px] sm:text-xs uppercase tracking-widest text-[#2563EB] font-semibold">
-              Daily Grace
+              Faith Blog
             </p>
             <h2
               id="encouragement-feed-heading"
@@ -154,12 +150,10 @@ export function HomePage({
         </div>
       </section>
 
-      {/* MINISTRY PROGRAMS SECTION */}
+      {/* WORD OF THE DAY SECTION (DAILY GRACE) */}
       <ProgramsSection
         programs={programs}
-        latestMidweek={latestMidweek}
         onInquireProgram={onInquireProgram}
-        onOpenMidweekNotes={onOpenMidweekNotes}
       />
 
       {/* ANSWERS ABOUT FAITH PREVIEW */}
@@ -167,15 +161,17 @@ export function HomePage({
         <section className="py-8 sm:py-12 border-t border-[#E4E4E7]" aria-labelledby="home-faith-qa">
           <div className="flex flex-col md:flex-row items-center md:items-end justify-between gap-3 md:gap-6 pb-5 sm:pb-6 text-center md:text-left">
             <div className="max-w-2xl space-y-1">
-              <p className="text-[11px] sm:text-xs uppercase tracking-widest text-[#2563EB] font-semibold">
-                Faith Blog &amp; Q&amp;A
-              </p>
               <h2
                 id="home-faith-qa"
                 className="text-lg sm:text-3xl font-semibold tracking-tight text-[#0B0B0D]"
               >
-                Honest Answers About Faith
+                {settings.answersHeading || 'Answers About Faith'}
               </h2>
+              {settings.answersSubtitle && (
+                <p className="text-xs sm:text-sm text-[#52525B]">
+                  {settings.answersSubtitle}
+                </p>
+              )}
             </div>
             <button
               type="button"

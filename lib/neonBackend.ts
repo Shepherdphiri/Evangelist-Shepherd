@@ -238,6 +238,8 @@ async function ensureSchemaAndSeed(sql: SqlClient): Promise<void> {
           whatsapp_url TEXT NOT NULL DEFAULT '',
           podcast_url TEXT NOT NULL DEFAULT '',
           social_links TEXT NOT NULL DEFAULT '',
+          answers_heading TEXT NOT NULL DEFAULT 'Answers About Faith',
+          answers_subtitle TEXT NOT NULL DEFAULT '',
           updated_by TEXT NOT NULL DEFAULT '',
           updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
         )
@@ -245,6 +247,14 @@ async function ensureSchemaAndSeed(sql: SqlClient): Promise<void> {
       await sql`
         ALTER TABLE ministry_settings
         ADD COLUMN IF NOT EXISTS social_links TEXT NOT NULL DEFAULT ''
+      `;
+      await sql`
+        ALTER TABLE ministry_settings
+        ADD COLUMN IF NOT EXISTS answers_heading TEXT NOT NULL DEFAULT 'Answers About Faith'
+      `;
+      await sql`
+        ALTER TABLE ministry_settings
+        ADD COLUMN IF NOT EXISTS answers_subtitle TEXT NOT NULL DEFAULT ''
       `;
 
       await sql`
@@ -387,6 +397,14 @@ async function ensureSchemaAndSeed(sql: SqlClient): Promise<void> {
           UPDATE faith_articles
           SET cover_image = ''
           WHERE cover_image LIKE '/src/assets/images/%'
+        `;
+        await sql`
+          DELETE FROM programs
+          WHERE LOWER(TRIM(title)) = 'midweek message'
+        `;
+        await sql`
+          DELETE FROM sermons
+          WHERE category = 'Midweek Message'
         `;
       }
     })().catch((err) => {
@@ -570,6 +588,9 @@ function mapSettingsRow(r: Record<string, unknown> | undefined) {
     whatsappUrl: String(r.whatsapp_url ?? ''),
     podcastUrl: String(r.podcast_url ?? ''),
     socialLinks,
+    answersHeading:
+      cleanStr(r.answers_heading, 120) || DEFAULT_MINISTRY_SETTINGS_DATA.answersHeading,
+    answersSubtitle: cleanStr(r.answers_subtitle, 240),
   };
 }
 
@@ -993,6 +1014,12 @@ export async function handleNeonApiRequest(
       const whatsappUrl = findMatchingUrl('whatsapp', sanitizeUrl(body.whatsappUrl, 300));
       const podcastUrl = findMatchingUrl('podcast', sanitizeUrl(body.podcastUrl, 300));
       const socialLinksJson = JSON.stringify(cleanedSocialLinks);
+      const answersHeading = cleanStr(
+        body.answersHeading,
+        120,
+        s.answersHeading
+      ) || s.answersHeading;
+      const answersSubtitle = cleanStr(body.answersSubtitle, 240, '');
 
       const savedRows = (await sql`
         INSERT INTO ministry_settings (
@@ -1002,7 +1029,8 @@ export async function handleNeonApiRequest(
           location, footer_heading, footer_bio, footer_copyright,
           footer_credit, hide_demo_sermons, hide_demo_articles,
           hide_demo_programs, youtube_url, facebook_url, instagram_url,
-          tiktok_url, x_url, whatsapp_url, podcast_url, social_links, updated_by, updated_at
+          tiktok_url, x_url, whatsapp_url, podcast_url, social_links,
+          answers_heading, answers_subtitle, updated_by, updated_at
         ) VALUES (
           'main', ${evangelistName}, ${heroEyebrow}, ${ministryTagline},
           ${heroPrimaryCtaLabel}, ${heroSecondaryCtaLabel}, ${aboutBio},
@@ -1010,7 +1038,8 @@ export async function handleNeonApiRequest(
           ${location}, ${footerHeading}, ${footerBio}, ${footerCopyright},
           ${footerCredit}, ${hideDemoSermons}, ${hideDemoArticles},
           ${hideDemoPrograms}, ${youtubeUrl}, ${facebookUrl}, ${instagramUrl},
-          ${tiktokUrl}, ${xUrl}, ${whatsappUrl}, ${podcastUrl}, ${socialLinksJson}, ${admin.uid}, NOW()
+          ${tiktokUrl}, ${xUrl}, ${whatsappUrl}, ${podcastUrl}, ${socialLinksJson},
+          ${answersHeading}, ${answersSubtitle}, ${admin.uid}, NOW()
         )
         ON CONFLICT (id) DO UPDATE SET
           evangelist_name = EXCLUDED.evangelist_name,
@@ -1039,6 +1068,8 @@ export async function handleNeonApiRequest(
           whatsapp_url = EXCLUDED.whatsapp_url,
           podcast_url = EXCLUDED.podcast_url,
           social_links = EXCLUDED.social_links,
+          answers_heading = EXCLUDED.answers_heading,
+          answers_subtitle = EXCLUDED.answers_subtitle,
           updated_by = EXCLUDED.updated_by,
           updated_at = NOW()
         RETURNING *

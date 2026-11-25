@@ -3,7 +3,6 @@ import {
   MinistryProgram,
   MinistrySettings,
   PageRoute,
-  Sermon,
 } from '../types/ministry';
 import { ResilientImage } from '../components/ResilientImage';
 import { ProgramsSection } from '../components/ProgramsSection';
@@ -13,11 +12,9 @@ interface AboutPageProps {
   settings: MinistrySettings;
   settingsLoaded?: boolean;
   programs: MinistryProgram[];
-  latestMidweek: Sermon | null;
   isAdmin: boolean;
   onNavigate: (page: PageRoute) => void;
   onInquireProgram: (programTitle: string) => void;
-  onOpenMidweekNotes: (sermon: Sermon) => void;
   onOpenStudioSocial: () => void;
 }
 
@@ -48,11 +45,9 @@ export function AboutPage({
   settings,
   settingsLoaded = true,
   programs,
-  latestMidweek,
   isAdmin,
   onNavigate,
   onInquireProgram,
-  onOpenMidweekNotes,
   onOpenStudioSocial,
 }: AboutPageProps) {
   return (
@@ -152,12 +147,10 @@ export function AboutPage({
         </div>
       </section>
 
-      {/* Programs */}
+      {/* Word of the Day */}
       <ProgramsSection
         programs={programs}
-        latestMidweek={latestMidweek}
         onInquireProgram={onInquireProgram}
-        onOpenMidweekNotes={onOpenMidweekNotes}
       />
 
       {/* Social Media Portals */}

@@ -57,6 +57,8 @@ export const DEFAULT_MINISTRY_SETTINGS_DATA = {
   whatsappUrl: '',
   podcastUrl: '',
   socialLinks: DEFAULT_SOCIAL_LINKS,
+  answersHeading: 'Answers About Faith',
+  answersSubtitle: '',
 };
 
 export interface StarterSermonSeed {
@@ -176,28 +178,6 @@ When regret speaks loudly, answer it with Romans 8. Run toward the Father in rep
     viewCount: 0,
     authorName: 'Evangelist Shepherd',
   },
-  {
-    title: 'Midweek Renewal: Praying With Expectant Faith',
-    category: 'Midweek Message',
-    scriptureRef: 'Mark 11:24 · Psalm 27:14',
-    scriptureQuote:
-      'Wait for the Lord; be strong, and let your heart take courage; wait for the Lord!',
-    summary:
-      'Midweek video teaching and prayer encouragement for every Wednesday—rekindling faith and courage for the rest of the week.',
-    content: `By the middle of the week, responsibilities and spiritual weariness can quietly drain our focus. Wednesday is an invitation to pause, open Scripture, and renew our expectation in prayer.
-
-Expectant faith does not dictate timelines to God—it trusts His goodness completely while refusing to quit praying. Watch this midweek message and take a quiet moment to bring your family, calling, and community before the Lord.`,
-    readTimeMinutes: 4,
-    coverImage: '',
-    videoUrl: 'https://www.youtube.com',
-    isFeatured: true,
-    isPublished: true,
-    amenCount: 0,
-    prayCount: 0,
-    loveCount: 0,
-    viewCount: 0,
-    authorName: 'Evangelist Shepherd',
-  },
 ];
 
 export interface StarterArticleSeed {
@@ -299,15 +279,5 @@ export const STARTER_PROGRAMS_DATA: StarterProgramSeed[] = [
     locationOrLink: 'Published daily on Home & Blog',
     isActive: true,
     orderIndex: 1,
-  },
-  {
-    title: 'Midweek Message',
-    schedule: 'Every Wednesday',
-    format: 'Weekly Gospel Teaching',
-    description:
-      'Midweek video sermon and prayer focus encouraging believers to stand firm in Scripture and expectant faith.',
-    locationOrLink: 'Every Wednesday · Watch on site',
-    isActive: true,
-    orderIndex: 2,
   },
 ];

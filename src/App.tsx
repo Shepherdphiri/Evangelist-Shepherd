@@ -546,7 +546,7 @@ function EvangelistShepherdApp() {
     engagementMetrics,
   ]);
 
-  // Strict Separation: Words of Encouragement vs Short Sermon Videos vs Midweek Message Videos
+  // Strict Separation: Words of Encouragement vs Short Sermon Videos
   const encouragements = useMemo(
     () => publishedPosts.filter((s) => s.category === 'Word of Encouragement'),
     [publishedPosts]
@@ -556,13 +556,6 @@ function EvangelistShepherdApp() {
     () => publishedPosts.filter((s) => s.category === 'Short Sermon'),
     [publishedPosts]
   );
-
-  const midweekVideos = useMemo(
-    () => publishedPosts.filter((s) => s.category === 'Midweek Message'),
-    [publishedPosts]
-  );
-
-  const latestMidweek = midweekVideos[0] ?? null;
 
   const publishedArticles: FaithArticle[] = useMemo(() => {
     if (firestoreArticles.length > 0) {
@@ -589,17 +582,26 @@ function EvangelistShepherdApp() {
   ]);
 
   const activePrograms: MinistryProgram[] = useMemo(() => {
+    const filterVisible = (list: MinistryProgram[]) =>
+      list.filter(
+        (p) =>
+          p.isActive &&
+          !p.title.toLowerCase().includes('midweek') &&
+          !p.format.toLowerCase().includes('midweek')
+      );
     if (firestorePrograms.length > 0) {
-      return firestorePrograms.filter((p) => p.isActive);
+      return filterVisible(firestorePrograms);
     }
     if (!programsLoaded || settings.hideDemoPrograms) return [];
-    return STARTER_PROGRAMS.map((p, idx) => ({
-      ...p,
-      id: `starter-program-${idx}`,
-      authorId: 'evangelist-shepherd',
-      createdAt: new Date(Date.now() - idx * 86_400_000),
-      updatedAt: new Date(Date.now() - idx * 86_400_000),
-    }));
+    return filterVisible(
+      STARTER_PROGRAMS.map((p, idx) => ({
+        ...p,
+        id: `starter-program-${idx}`,
+        authorId: 'evangelist-shepherd',
+        createdAt: new Date(Date.now() - idx * 86_400_000),
+        updatedAt: new Date(Date.now() - idx * 86_400_000),
+      }))
+    );
   }, [firestorePrograms, programsLoaded, settings.hideDemoPrograms]);
 
   const incrementStarterMetric = async (
@@ -824,13 +826,11 @@ function EvangelistShepherdApp() {
             settings={settings}
             settingsLoaded={settingsLoaded}
             encouragements={encouragements}
-            latestMidweek={latestMidweek}
             articles={publishedArticles}
             programs={activePrograms}
             reactedKeys={reactedKeys}
             onReact={(post, reaction) => void handleReactToPost(post, reaction)}
             onOpenEncouragementInBlog={handleOpenEncouragementInBlog}
-            onOpenMidweekNotes={handleOpenSermon}
             onReadArticle={handleOpenArticle}
             onNavigate={navigateTo}
             onInquireProgram={handleInquireProgram}
@@ -842,11 +842,9 @@ function EvangelistShepherdApp() {
             settings={settings}
             settingsLoaded={settingsLoaded}
             programs={activePrograms}
-            latestMidweek={latestMidweek}
             isAdmin={isAdmin}
             onNavigate={navigateTo}
             onInquireProgram={handleInquireProgram}
-            onOpenMidweekNotes={handleOpenSermon}
             onOpenStudioSocial={() => openStudio('social')}
           />
         )}
@@ -862,6 +860,8 @@ function EvangelistShepherdApp() {
           <BlogPage
             encouragements={encouragements}
             articles={publishedArticles}
+            answersHeading={settings.answersHeading}
+            answersSubtitle={settings.answersSubtitle}
             reactedKeys={reactedKeys}
             onReact={(post, reaction) => void handleReactToPost(post, reaction)}
             onReadEncouragement={handleOpenSermon}

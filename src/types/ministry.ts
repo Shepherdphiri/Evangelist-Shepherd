@@ -110,6 +110,8 @@ export interface MinistrySettings {
   whatsappUrl: string;
   podcastUrl: string;
   socialLinks?: SocialPortalItem[];
+  answersHeading?: string;
+  answersSubtitle?: string;
   updatedBy?: string;
   updatedAt?: Timestamp | Date | null;
 }

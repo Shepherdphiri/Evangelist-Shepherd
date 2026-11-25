@@ -12,6 +12,8 @@ import { ResilientImage } from '../components/ResilientImage';
 interface BlogPageProps {
   encouragements: Sermon[];
   articles: FaithArticle[];
+  answersHeading?: string;
+  answersSubtitle?: string;
   reactedKeys: Record<string, boolean>;
   onReact: (post: Sermon, reaction: ReactionType) => void;
   onReadEncouragement: (post: Sermon) => void;
@@ -22,6 +24,8 @@ interface BlogPageProps {
 export function BlogPage({
   encouragements,
   articles,
+  answersHeading = 'Answers About Faith',
+  answersSubtitle = '',
   reactedKeys,
   onReact,
   onReadEncouragement,
@@ -170,9 +174,14 @@ export function BlogPage({
       {/* Answers About Faith Articles */}
       {filteredArticles.length > 0 && (
         <section className="space-y-4 sm:space-y-5 pt-2">
-          <h2 className="text-xl sm:text-2xl font-semibold text-[#0B0B0D] tracking-tight text-center md:text-left">
-            Answers About Christian Faith
-          </h2>
+          <div className="space-y-1 text-center md:text-left">
+            <h2 className="text-xl sm:text-2xl font-semibold text-[#0B0B0D] tracking-tight">
+              {answersHeading || 'Answers About Faith'}
+            </h2>
+            {answersSubtitle && (
+              <p className="text-xs sm:text-sm text-[#52525B]">{answersSubtitle}</p>
+            )}
+          </div>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-5">
             {filteredArticles.map((article) => (
               <article

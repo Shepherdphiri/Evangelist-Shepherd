@@ -18,6 +18,7 @@ import {
   Eye,
   EyeOff,
   FileText,
+  HelpCircle,
   Inbox,
   KeyRound,
   LogIn,
@@ -68,7 +69,13 @@ import {
 } from '../lib/neonClient';
 import { ImageUploadField } from './ImageUploadField';
 
-export type StudioTab = 'sermons' | 'blog' | 'programs' | 'inbox' | 'social';
+export type StudioTab =
+  | 'sermons'
+  | 'blog'
+  | 'answers'
+  | 'programs'
+  | 'inbox'
+  | 'social';
 
 interface MinistryStudioModalProps {
   isOpen: boolean;
@@ -132,9 +139,6 @@ export function MinistryStudioModal({
   const [isPublished, setIsPublished] = useState(true);
   const [savingSermon, setSavingSermon] = useState(false);
   const [sermonFeedback, setSermonFeedback] = useState('');
-
-  // Blog Posts sub-tab ('encouragement' | 'faith')
-  const [blogSubTab, setBlogSubTab] = useState<'encouragement' | 'faith'>('encouragement');
 
   // Encouragement Blog editor (image-only, no video)
   const [editingEncId, setEditingEncId] = useState<string | null>(null);
@@ -1971,8 +1975,9 @@ export function MinistryStudioModal({
               {(
                 [
                   { id: 'sermons', label: 'Sermons & Videos', icon: BookOpen },
-                  { id: 'blog', label: 'Blog Posts', icon: FileText },
-                  { id: 'programs', label: 'Programs', icon: Calendar },
+                  { id: 'blog', label: 'Faith Blog', icon: FileText },
+                  { id: 'answers', label: 'Answers About Faith', icon: HelpCircle },
+                  { id: 'programs', label: 'Word of the Day', icon: Calendar },
                   {
                     id: 'inbox',
                     label: unreadCount > 0 ? `Inbox (${unreadCount})` : 'Inbox',
@@ -2002,20 +2007,20 @@ export function MinistryStudioModal({
 
             <div className="flex-1 overflow-y-auto p-6 space-y-6">
 
-              {/* TAB 1: SERMONS & MIDWEEK VIDEOS ONLY */}
+              {/* TAB 1: SHORT SERMON VIDEOS ONLY */}
               {activeTab === 'sermons' && (() => {
                 const videoSermons = sermons.filter(
-                  (s) => s.category !== 'Word of Encouragement'
+                  (s) => s.category === 'Short Sermon'
                 );
                 return (
                   <div className="space-y-6">
                     <div className="flex flex-wrap items-center justify-between gap-4">
                       <div>
                         <h3 className="text-xl font-semibold text-[#0B0B0D]">
-                          Sermon Videos &amp; Midweek Videos
+                          Sermon Videos
                         </h3>
                         <p className="text-xs text-[#52525B]">
-                          &ldquo;Short Sermon&rdquo; appears on Sermons; &ldquo;Midweek Message&rdquo; plays from the Midweek Message card in Programs. (Blog posts are managed separately under Blog Posts.)
+                          Publish Short Sermon videos shown on the Sermons page. (Words of Encouragement are managed under Faith Blog.)
                         </p>
                       </div>
                       <div className="flex flex-wrap items-center gap-2">
@@ -2093,24 +2098,6 @@ export function MinistryStudioModal({
                           </div>
                           <div>
                             <label className="block text-xs font-semibold text-[#52525B] mb-1">
-                              Video Category *
-                            </label>
-                            <select
-                              value={category === 'Midweek Message' ? 'Midweek Message' : 'Short Sermon'}
-                              onChange={(e) => setCategory(e.target.value as SermonCategory)}
-                              className="w-full px-3 py-2 rounded-lg text-sm bg-[#FAFAFA] border border-[#E4E4E7]"
-                            >
-                              <option value="Short Sermon">Short Sermon (Sermons Page)</option>
-                              <option value="Midweek Message">
-                                Midweek Message (Home Midweek Program Only)
-                              </option>
-                            </select>
-                          </div>
-                        </div>
-
-                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                          <div>
-                            <label className="block text-xs font-semibold text-[#52525B] mb-1">
                               Scripture Reference *
                             </label>
                             <input
@@ -2123,6 +2110,9 @@ export function MinistryStudioModal({
                               className="w-full px-3 py-2 rounded-lg text-sm bg-[#FAFAFA] border border-[#E4E4E7]"
                             />
                           </div>
+                        </div>
+
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                           <div>
                             <label className="block text-xs font-semibold text-[#52525B] mb-1">
                               Notes Read Time (min)
@@ -2135,6 +2125,11 @@ export function MinistryStudioModal({
                               onChange={(e) => setReadTimeMinutes(Number(e.target.value))}
                               className="w-full px-3 py-2 rounded-lg text-sm bg-[#FAFAFA] border border-[#E4E4E7]"
                             />
+                          </div>
+                          <div className="flex items-end">
+                            <p className="text-xs text-[#71717A] py-2">
+                              Category: <strong className="text-[#0B0B0D]">Short Sermon</strong>
+                            </p>
                           </div>
                         </div>
 
@@ -2298,7 +2293,7 @@ export function MinistryStudioModal({
                 );
               })()}
 
-              {/* TAB 2: BLOG POSTS (Words of Encouragement & Faith Q&A — Images Only, No Video) */}
+              {/* TAB 2: FAITH BLOG (Words of Encouragement — Images & Writing Only) */}
               {activeTab === 'blog' && (() => {
                 const encouragementPosts = sermons.filter(
                   (s) => s.category === 'Word of Encouragement'
@@ -2308,91 +2303,61 @@ export function MinistryStudioModal({
                     <div className="flex flex-wrap items-center justify-between gap-4">
                       <div>
                         <h3 className="text-xl font-semibold text-[#0B0B0D]">
-                          Blog Posts (Images &amp; Writing Only)
+                          Faith Blog · Words of Encouragement
                         </h3>
                         <p className="text-xs text-[#52525B]">
-                          Publish Words of Encouragement (shown on Home &amp; Blog) and Faith Q&amp;A articles with uploaded images—separate from Sermon videos.
+                          Publish Words of Encouragement shown under Faith Blog on Home &amp; Blog with cover images and visitor reactions.
                         </p>
                       </div>
-                      <div className="inline-flex items-center gap-1 p-1 rounded-xl bg-white border border-[#E4E4E7]">
+                      <div className="flex flex-wrap items-center gap-2">
+                        {!hasFirestoreSermons && settingsForm.hideDemoSermons && (
+                          <button
+                            type="button"
+                            onClick={() => void handleToggleDemoSermons(false)}
+                            disabled={savingSermon || !isAdmin}
+                            className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg text-xs font-semibold border border-[#E4E4E7] bg-white hover:bg-[#F4F4F5] cursor-pointer disabled:opacity-50"
+                          >
+                            <RotateCcw className="w-3.5 h-3.5 text-[#2563EB]" />
+                            <span>Restore Demo Posts</span>
+                          </button>
+                        )}
+                        {!hasFirestoreSermons && !settingsForm.hideDemoSermons && (
+                          <>
+                            <button
+                              type="button"
+                              onClick={() => void handleToggleDemoSermons(true)}
+                              disabled={savingSermon || !isAdmin}
+                              className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg text-xs font-semibold border border-[#FECACA] text-[#991B1B] bg-[#FEF2F2] hover:bg-[#FEE2E2] cursor-pointer disabled:opacity-50"
+                            >
+                              <EyeOff className="w-3.5 h-3.5" />
+                              <span>Remove Demo Posts</span>
+                            </button>
+                            <button
+                              type="button"
+                              onClick={handleSeedStarterSermons}
+                              disabled={savingSermon || !isAdmin}
+                              className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg text-xs font-semibold border border-[#E4E4E7] bg-white hover:bg-[#F4F4F5] cursor-pointer disabled:opacity-50"
+                            >
+                              <Sparkles className="w-3.5 h-3.5 text-[#2563EB]" />
+                              <span>Import All to Database</span>
+                            </button>
+                          </>
+                        )}
                         <button
                           type="button"
-                          onClick={() => setBlogSubTab('encouragement')}
-                          className={`px-3.5 py-1.5 rounded-lg text-xs font-semibold cursor-pointer whitespace-nowrap ${
-                            blogSubTab === 'encouragement'
-                              ? 'bg-[#2563EB] text-white'
-                              : 'text-[#52525B] hover:text-[#0B0B0D]'
-                          }`}
+                          onClick={() => {
+                            resetEncForm();
+                            setShowEncForm((prev) => !prev);
+                          }}
+                          className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg text-xs font-semibold bg-[#0B0B0D] text-white hover:bg-[#2563EB] cursor-pointer"
                         >
-                          Words of Encouragement ({encouragementPosts.length})
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => setBlogSubTab('faith')}
-                          className={`px-3.5 py-1.5 rounded-lg text-xs font-semibold cursor-pointer whitespace-nowrap ${
-                            blogSubTab === 'faith'
-                              ? 'bg-[#2563EB] text-white'
-                              : 'text-[#52525B] hover:text-[#0B0B0D]'
-                          }`}
-                        >
-                          Faith Q&amp;A Articles ({articles.length})
+                          <Plus className="w-3.5 h-3.5" />
+                          <span>{showEncForm ? 'Hide Editor' : 'New Encouragement Post'}</span>
                         </button>
                       </div>
                     </div>
 
-                    {blogSubTab === 'encouragement' ? (
-                      <div className="space-y-5">
-                        <div className="flex flex-wrap items-center justify-between gap-3">
-                          <p className="text-xs text-[#52525B]">
-                            Daily Words of Encouragement with cover image and visitor reactions (Amen / Praying / Encouraged). No video links.
-                          </p>
-                          <div className="flex flex-wrap items-center gap-2">
-                            {!hasFirestoreSermons && settingsForm.hideDemoSermons && (
-                              <button
-                                type="button"
-                                onClick={() => void handleToggleDemoSermons(false)}
-                                disabled={savingSermon || !isAdmin}
-                                className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg text-xs font-semibold border border-[#E4E4E7] bg-white hover:bg-[#F4F4F5] cursor-pointer disabled:opacity-50"
-                              >
-                                <RotateCcw className="w-3.5 h-3.5 text-[#2563EB]" />
-                                <span>Restore Demo Posts</span>
-                              </button>
-                            )}
-                            {!hasFirestoreSermons && !settingsForm.hideDemoSermons && (
-                              <>
-                                <button
-                                  type="button"
-                                  onClick={() => void handleToggleDemoSermons(true)}
-                                  disabled={savingSermon || !isAdmin}
-                                  className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg text-xs font-semibold border border-[#FECACA] text-[#991B1B] bg-[#FEF2F2] hover:bg-[#FEE2E2] cursor-pointer disabled:opacity-50"
-                                >
-                                  <EyeOff className="w-3.5 h-3.5" />
-                                  <span>Remove Demo Posts</span>
-                                </button>
-                                <button
-                                  type="button"
-                                  onClick={handleSeedStarterSermons}
-                                  disabled={savingSermon || !isAdmin}
-                                  className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg text-xs font-semibold border border-[#E4E4E7] bg-white hover:bg-[#F4F4F5] cursor-pointer disabled:opacity-50"
-                                >
-                                  <Sparkles className="w-3.5 h-3.5 text-[#2563EB]" />
-                                  <span>Import All to Database</span>
-                                </button>
-                              </>
-                            )}
-                            <button
-                              type="button"
-                              onClick={() => {
-                                resetEncForm();
-                                setShowEncForm((prev) => !prev);
-                              }}
-                              className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg text-xs font-semibold bg-[#0B0B0D] text-white hover:bg-[#2563EB] cursor-pointer"
-                            >
-                              <Plus className="w-3.5 h-3.5" />
-                              <span>{showEncForm ? 'Hide Editor' : 'New Encouragement Post'}</span>
-                            </button>
-                          </div>
-                        </div>
+                    <div className="space-y-5">
 
                         {encFeedback && (
                           <div className="p-3 rounded-lg text-sm bg-white border border-[#E4E4E7]">
@@ -2581,65 +2546,139 @@ export function MinistryStudioModal({
                           )}
                         </div>
                       </div>
-                    ) : (
-                      <div className="space-y-5">
-                        <div className="flex flex-wrap items-center justify-between gap-3">
-                          <p className="text-xs text-[#52525B]">
-                            Biblical Q&amp;A blog articles with uploaded cover images.
-                          </p>
-                          <div className="flex flex-wrap items-center gap-2">
-                            {!hasFirestoreArticles && settingsForm.hideDemoArticles && (
-                              <button
-                                type="button"
-                                onClick={() => void handleToggleDemoArticles(false)}
-                                disabled={savingArticle || !isAdmin}
-                                className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg text-xs font-semibold border border-[#E4E4E7] bg-white hover:bg-[#F4F4F5] cursor-pointer disabled:opacity-50"
-                              >
-                                <RotateCcw className="w-3.5 h-3.5 text-[#2563EB]" />
-                                <span>Restore Demo Articles</span>
-                              </button>
-                            )}
-                            {!hasFirestoreArticles && !settingsForm.hideDemoArticles && (
-                              <>
-                                <button
-                                  type="button"
-                                  onClick={() => void handleToggleDemoArticles(true)}
-                                  disabled={savingArticle || !isAdmin}
-                                  className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg text-xs font-semibold border border-[#FECACA] text-[#991B1B] bg-[#FEF2F2] hover:bg-[#FEE2E2] cursor-pointer disabled:opacity-50"
-                                >
-                                  <EyeOff className="w-3.5 h-3.5" />
-                                  <span>Remove All Demo Articles</span>
-                                </button>
-                                <button
-                                  type="button"
-                                  onClick={handleSeedStarterArticles}
-                                  disabled={savingArticle || !isAdmin}
-                                  className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg text-xs font-semibold border border-[#E4E4E7] bg-white hover:bg-[#F4F4F5] cursor-pointer disabled:opacity-50"
-                                >
-                                  <Sparkles className="w-3.5 h-3.5 text-[#2563EB]" />
-                                  <span>Import All to Database</span>
-                                </button>
-                              </>
-                            )}
+                  </div>
+                );
+              })()}
+
+              {/* TAB 3: ANSWERS ABOUT FAITH (Dedicated Section Customization + Q&A Manager) */}
+              {activeTab === 'answers' && (
+                <div className="space-y-6">
+                  <form
+                    onSubmit={handleSaveSettings}
+                    className="bg-white border border-[#E4E4E7] rounded-2xl p-5 space-y-4"
+                  >
+                    <div className="flex flex-wrap items-center justify-between gap-3">
+                      <div>
+                        <h3 className="text-base font-semibold text-[#0B0B0D]">
+                          Customize &ldquo;Answers About Faith&rdquo; Section Header
+                        </h3>
+                        <p className="text-xs text-[#52525B]">
+                          Edit the section title and optional description displayed above your Q&amp;A cards on Home and Blog.
+                        </p>
+                      </div>
+                      <button
+                        type="submit"
+                        disabled={savingSettings || !isAdmin}
+                        className="px-4 py-2 rounded-lg text-xs font-semibold bg-[#2563EB] text-white hover:bg-[#1D4ED8] cursor-pointer disabled:opacity-50 whitespace-nowrap"
+                      >
+                        {savingSettings ? 'Saving...' : 'Save Section Title'}
+                      </button>
+                    </div>
+
+                    {settingsFeedback && (
+                      <div className="p-2.5 rounded-lg text-xs bg-[#EEF2FF] text-[#2563EB]">
+                        {settingsFeedback}
+                      </div>
+                    )}
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                      <div>
+                        <label className="block text-xs font-semibold text-[#52525B] mb-1">
+                          Section Heading *
+                        </label>
+                        <input
+                          type="text"
+                          required
+                          maxLength={120}
+                          value={settingsForm.answersHeading ?? 'Answers About Faith'}
+                          onChange={(e) =>
+                            patchSettingsForm({ answersHeading: e.target.value })
+                          }
+                          placeholder="Answers About Faith"
+                          className="w-full px-3 py-2 rounded-lg text-sm bg-[#FAFAFA] border border-[#E4E4E7]"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-semibold text-[#52525B] mb-1">
+                          Optional Subtitle
+                        </label>
+                        <input
+                          type="text"
+                          maxLength={240}
+                          value={settingsForm.answersSubtitle ?? ''}
+                          onChange={(e) =>
+                            patchSettingsForm({ answersSubtitle: e.target.value })
+                          }
+                          placeholder="Leave blank or add a short description"
+                          className="w-full px-3 py-2 rounded-lg text-sm bg-[#FAFAFA] border border-[#E4E4E7]"
+                        />
+                      </div>
+                    </div>
+                  </form>
+
+                  <div className="space-y-5">
+                    <div className="flex flex-wrap items-center justify-between gap-4">
+                      <div>
+                        <h3 className="text-xl font-semibold text-[#0B0B0D]">
+                          Answers About Faith ({articles.length})
+                        </h3>
+                        <p className="text-xs text-[#52525B]">
+                          Create, edit, publish, or remove biblical Q&amp;A cards shown in Answers About Faith.
+                        </p>
+                      </div>
+                      <div className="flex flex-wrap items-center gap-2">
+                        {!hasFirestoreArticles && settingsForm.hideDemoArticles && (
+                          <button
+                            type="button"
+                            onClick={() => void handleToggleDemoArticles(false)}
+                            disabled={savingArticle || !isAdmin}
+                            className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg text-xs font-semibold border border-[#E4E4E7] bg-white hover:bg-[#F4F4F5] cursor-pointer disabled:opacity-50"
+                          >
+                            <RotateCcw className="w-3.5 h-3.5 text-[#2563EB]" />
+                            <span>Restore Demo Articles</span>
+                          </button>
+                        )}
+                        {!hasFirestoreArticles && !settingsForm.hideDemoArticles && (
+                          <>
                             <button
                               type="button"
-                              onClick={() => {
-                                resetArticleForm();
-                                setShowArticleForm((prev) => !prev);
-                              }}
-                              className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg text-xs font-semibold bg-[#0B0B0D] text-white hover:bg-[#2563EB] cursor-pointer"
+                              onClick={() => void handleToggleDemoArticles(true)}
+                              disabled={savingArticle || !isAdmin}
+                              className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg text-xs font-semibold border border-[#FECACA] text-[#991B1B] bg-[#FEF2F2] hover:bg-[#FEE2E2] cursor-pointer disabled:opacity-50"
                             >
-                              <Plus className="w-3.5 h-3.5" />
-                              <span>{showArticleForm ? 'Hide Editor' : 'New Faith Article'}</span>
+                              <EyeOff className="w-3.5 h-3.5" />
+                              <span>Remove All Demo Articles</span>
                             </button>
-                          </div>
-                        </div>
-
-                        {articleFeedback && (
-                          <div className="p-3 rounded-lg text-sm bg-white border border-[#E4E4E7]">
-                            {articleFeedback}
-                          </div>
+                            <button
+                              type="button"
+                              onClick={handleSeedStarterArticles}
+                              disabled={savingArticle || !isAdmin}
+                              className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg text-xs font-semibold border border-[#E4E4E7] bg-white hover:bg-[#F4F4F5] cursor-pointer disabled:opacity-50"
+                            >
+                              <Sparkles className="w-3.5 h-3.5 text-[#2563EB]" />
+                              <span>Import All to Database</span>
+                            </button>
+                          </>
                         )}
+                        <button
+                          type="button"
+                          onClick={() => {
+                            resetArticleForm();
+                            setShowArticleForm((prev) => !prev);
+                          }}
+                          className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg text-xs font-semibold bg-[#0B0B0D] text-white hover:bg-[#2563EB] cursor-pointer"
+                        >
+                          <Plus className="w-3.5 h-3.5" />
+                          <span>{showArticleForm ? 'Hide Editor' : 'New Answer About Faith'}</span>
+                        </button>
+                      </div>
+                    </div>
+
+                    {articleFeedback && (
+                      <div className="p-3 rounded-lg text-sm bg-white border border-[#E4E4E7]">
+                        {articleFeedback}
+                      </div>
+                    )}
 
                         {showArticleForm && (
                           <form
@@ -2838,21 +2877,25 @@ export function MinistryStudioModal({
                           )}
                         </div>
                       </div>
-                    )}
-                  </div>
-                );
-              })()}
+                </div>
+              )}
 
-              {/* TAB 3: PROGRAMS */}
-              {activeTab === 'programs' && (
+              {/* TAB 4: WORD OF THE DAY (Daily Grace) */}
+              {activeTab === 'programs' && (() => {
+                const visiblePrograms = programs.filter(
+                  (p) =>
+                    !p.title.toLowerCase().includes('midweek') &&
+                    !p.format.toLowerCase().includes('midweek')
+                );
+                return (
                 <div className="space-y-6">
                   <div className="flex flex-wrap items-center justify-between gap-4">
                     <div>
                       <h3 className="text-xl font-semibold text-[#0B0B0D]">
-                        Ministry Programs
+                        Daily Grace · Word of the Day
                       </h3>
                       <p className="text-xs text-[#52525B]">
-                        Manage fellowships, live Q&amp;As, prayer watches, and outreach schedules.
+                        Manage the Word of the Day cards displayed under Daily Grace on Home and About.
                       </p>
                     </div>
                     <div className="flex flex-wrap items-center gap-2">
@@ -2898,7 +2941,7 @@ export function MinistryStudioModal({
                         className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg text-xs font-semibold bg-[#0B0B0D] text-white hover:bg-[#2563EB] cursor-pointer"
                       >
                         <Plus className="w-3.5 h-3.5" />
-                        <span>{showProgramForm ? 'Hide Editor' : 'New Program'}</span>
+                        <span>{showProgramForm ? 'Hide Editor' : 'New Word of the Day'}</span>
                       </button>
                     </div>
                   </div>
@@ -3028,14 +3071,14 @@ export function MinistryStudioModal({
                         Viewing starter demo programs currently shown on your site. Edit or delete any demo item below, or remove them all.
                       </div>
                     )}
-                    {programs.length === 0 ? (
+                    {visiblePrograms.length === 0 ? (
                       <div className="p-6 text-sm text-[#52525B]">
                         {settingsForm.hideDemoPrograms
-                          ? 'Demo programs are hidden and no saved programs exist yet. Click "New Program" or "Restore Demo Programs" above.'
-                          : 'No programs yet. Click "New Program" above to add one.'}
+                          ? 'Demo items are hidden and no Word of the Day cards exist yet. Click "New Word of the Day" or "Restore Demo Programs" above.'
+                          : 'No Word of the Day cards yet. Click "New Word of the Day" above to add one.'}
                       </div>
                     ) : (
-                      programs.map((p) => {
+                      visiblePrograms.map((p) => {
                         const isDemo = p.id.startsWith('starter-');
                         return (
                           <div
@@ -3081,7 +3124,8 @@ export function MinistryStudioModal({
                     )}
                   </div>
                 </div>
-              )}
+                );
+              })()}
 
               {/* TAB 4: INBOX */}
               {activeTab === 'inbox' && (
